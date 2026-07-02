@@ -3533,6 +3533,7 @@ class AccountCalendarApp(tk.Tk):
             ("cli", "Open CLI", "C", self.open_selected_cli, "normal"),
             ("login", "Login", "L", self.login_selected, "normal"),
             ("device_login", "Device Login", "D", self.device_login_selected, "normal"),
+            ("logout", "Logout", "G", self.logout_selected, "normal"),
             ("status", "Status", "I", self.status_selected, "normal"),
             ("doctor", "Doctor", "M", self.doctor_selected, "normal"),
             ("online", "Online", "O", self.online_selected, "primary"),
@@ -5265,7 +5266,7 @@ class AccountCalendarApp(tk.Tk):
         supported_actions = {
             "codex": {"coding", "desktop", "cli", "login", "device_login", "status", "doctor", "online", "dry_run", "restore", "reset", "set_timer", "clear_timer", "seed", "home", "refresh"},
             "claude": {"coding", "desktop", "cli", "login", "status", "doctor", "online", "home", "refresh"},
-            "cursor": {"coding", "desktop", "cli", "login", "status", "doctor", "online", "home", "refresh"},
+            "cursor": {"coding", "desktop", "cli", "login", "logout", "status", "doctor", "online", "home", "refresh"},
             "antigravity": {"coding", "desktop", "cli", "login", "status", "doctor", "online", "home", "refresh"},
         }.get(provider, {"home"} if selected_account is not None else set())
         if selected_account is not None and online_links_for_profile(selected_account):
@@ -6269,11 +6270,24 @@ class AccountCalendarApp(tk.Tk):
             profile["lastLimitsError"] = "Cursor is not installed."
             return {"ok": False, "provider": "cursor", "error": profile["lastLimitsError"], "status": desktop_status}
         if not ready:
-            profile["lastLimitsError"] = str(agent_status.get("message") or desktop_status.get("summary") or "Cursor login not detected.")
+            # `cursor_agent_status()` reports a probe failure (subprocess error, timeout,
+            # or non-JSON output) distinctly from a clean "not authenticated" response.
+            # Collapsing both into "Cursor login not detected." would tell the user to
+            # log in again when the real problem might just be a transient CLI hiccup,
+            # so keep the two cases visibly different (probe failures land in the
+            # generic "error" status color; a real missing login stays "login" amber).
+            probe_failed = bool(agent_status.get("error")) or bool(agent_status.get("raw")) or (
+                "exitCode" in agent_status and "isAuthenticated" not in agent_status
+            )
+            if probe_failed:
+                profile["lastLimitsError"] = f"Cursor Agent status check failed: {agent_status.get('error') or agent_status.get('raw') or 'unexpected response'}"
+            else:
+                profile["lastLimitsError"] = str(agent_status.get("message") or desktop_status.get("summary") or "Cursor login not detected.")
             return {
                 "ok": False,
                 "provider": "cursor",
                 "error": profile["lastLimitsError"],
+                "probeFailed": probe_failed,
                 "status": desktop_status,
                 "agentStatus": agent_status,
             }
@@ -6592,6 +6606,21 @@ class AccountCalendarApp(tk.Tk):
         self.open_cursor_desktop(profile)
         messagebox.showinfo("Cursor login", "Sign in inside Cursor, then use Refresh or Status in AI Account Hub.")
 
+    def start_cursor_logout(self, profile: dict) -> None:
+        if not self.cursor_agent_path:
+            messagebox.showerror("Cursor Agent not found", "Cursor Agent CLI was not found, so it cannot be logged out.")
+            return
+        workspace = Path(str(profile.get("workspace") or DEFAULT_WORKSPACE))
+        workspace.mkdir(parents=True, exist_ok=True)
+        script = (
+            'Write-Host "Cursor Agent logout"\n'
+            f"& {quote_ps(self.cursor_agent_path)} logout\n"
+            'Write-Host ""\n'
+            'Write-Host "Logout command finished. Use Refresh or Status to verify."\n'
+        )
+        self.start_visible_powershell(f"Cursor Agent logout - {profile.get('name', 'Account')}", script, workspace)
+        self.log(f"Opened Cursor Agent logout window for {profile.get('name', 'Account')}.")
+
     def start_antigravity_login(self, profile: dict) -> None:
         self.open_antigravity_desktop(profile)
         messagebox.showinfo("Antigravity login", "Sign in inside Antigravity, then use Refresh or Status in AI Account Hub.")
@@ -6710,13 +6739,19 @@ class AccountCalendarApp(tk.Tk):
 
         self.run_task(f"Running doctor for {profile.get('name', 'Account')}...", task)
 
-    def start_visible_powershell(self, title: str, script_text: str, working_directory: str | Path) -> None:
+    def start_visible_powershell(self, title: str, script_text: str, working_directory: str | Path) -> bool:
         full_script = f"$Host.UI.RawUI.WindowTitle = {quote_ps(title)}\nSet-Location -LiteralPath {quote_ps(working_directory)}\n{script_text}"
-        subprocess.Popen(
-            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", full_script],
-            cwd=str(working_directory),
-            creationflags=CREATE_NEW_CONSOLE,
-        )
+        try:
+            subprocess.Popen(
+                ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", full_script],
+                cwd=str(working_directory),
+                creationflags=CREATE_NEW_CONSOLE,
+            )
+        except OSError as error:
+            _logger.warning("start_visible_powershell failed to launch %r: %s", title, error)
+            messagebox.showerror("Could not open terminal", f"Failed to launch PowerShell for '{title}':\n{error}")
+            return False
+        return True
 
     def login_selected(self) -> None:
         self.start_login(device=False)
@@ -6816,6 +6851,18 @@ class AccountCalendarApp(tk.Tk):
         )
         self.start_visible_powershell(f"Codex login - {profile.get('name', 'Account')}", script, workspace)
         self.log(f"Opened login window for {profile.get('name', 'Account')}.")
+
+    def logout_selected(self) -> None:
+        profile = self.selected_required()
+        if profile is None:
+            return
+        if provider_key(profile) != "cursor":
+            messagebox.showinfo(
+                "Logout not available",
+                f"{provider_label(profile)} does not have a logout action wired up in AI Account Hub yet.",
+            )
+            return
+        self.start_cursor_logout(profile)
 
     def open_selected_cli(self) -> None:
         profile = self.selected_required()
