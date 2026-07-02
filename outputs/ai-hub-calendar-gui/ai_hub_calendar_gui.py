@@ -7,6 +7,7 @@ import datetime as dt
 import hashlib
 import http.server
 import json
+import logging
 import math
 import os
 import queue
@@ -29,6 +30,8 @@ MODULE_DIR = Path(__file__).resolve().parent
 if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 CLAUDE_PERMISSION_BRIDGE_PATH = MODULE_DIR / "claude_permission_bridge.py"
+
+_logger = logging.getLogger(__name__)
 
 from native_harness import (  # noqa: E402
     AntigravityTransport,
@@ -1899,7 +1902,7 @@ def locate_codex_icon_path() -> str:
             if text:
                 package_locations.append(Path(text))
     except Exception:
-        pass
+        _logger.debug("locate_codex_icon_path: AppxPackage lookup failed", exc_info=True)
 
     candidates: list[Path] = []
     seen = set()
@@ -2228,7 +2231,7 @@ def claude_desktop_login_status() -> dict:
                     expiry = dt.datetime(1601, 1, 1) + dt.timedelta(microseconds=expires)
                     status["sessionExpires"] = expiry.replace(tzinfo=dt.timezone.utc).isoformat()
         except Exception:
-            pass
+            _logger.debug("Claude Desktop cookie DB read failed", exc_info=True)
 
     status["ready"] = bool(status["desktopInstalled"] and (status["hasOAuthCache"] or status["hasSessionCookie"]))
     if status["ready"]:

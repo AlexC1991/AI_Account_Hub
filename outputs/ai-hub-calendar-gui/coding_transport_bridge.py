@@ -29,6 +29,7 @@ from __future__ import annotations
 import datetime as dt
 import http.server
 import json
+import logging
 import os
 import queue
 import secrets
@@ -37,6 +38,8 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
+
+_logger = logging.getLogger(__name__)
 
 from native_harness import (
     AntigravityTransport,
@@ -741,7 +744,7 @@ class CodingTransportBridge:
             else:
                 transport.stop()
         except Exception:
-            pass
+            _logger.debug("Native transport shutdown failed", exc_info=True)
 
     def _create_native_transport(self, profile: dict, workspace: Path, session_id: str = "") -> CodexTransport | StreamJsonTransport:
         provider = provider_key(profile)

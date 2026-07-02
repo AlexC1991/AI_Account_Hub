@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import difflib
 import json
+import logging
 import os
 import queue
 import re
@@ -17,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+_logger = logging.getLogger(__name__)
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 EventCallback = Callable[[dict], None]
@@ -219,7 +221,7 @@ class JsonRpcProcess:
         try:
             self.event_callback(message)
         except Exception:
-            pass
+            _logger.exception("event_callback failed for native event %r", message.get("method"))
 
     def _fail_pending(self, error: BaseException) -> None:
         with self._pending_lock:
@@ -664,7 +666,7 @@ class StreamJsonTransport:
         try:
             self.event_callback(message)
         except Exception:
-            pass
+            _logger.exception("event_callback failed for native event %r", message.get("method"))
 
 
 class AntigravityTransport(StreamJsonTransport):
