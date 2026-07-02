@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Account Hub - GUI Design Concepts</title>
+  <style>
+    :root {
+      --ink: #17211c;
+      --muted: #617067;
+      --line: #d9e0da;
+      --panel: #ffffff;
+      --app-bg: #eef2ef;
+      --green: #2f7d4e;
+      --red: #b42318;
+      --amber: #9a5d00;
+      --blue: #246b8f;
+      --teal: #19706b;
+      --steel: #40566b;
+      --shadow: 0 20px 54px rgba(31, 44, 37, 0.16);
+      --radius: 8px;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #dfe6e1;
+      min-height: 100vh;
+    }
+
+    .board {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .board-header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      max-width: 760px;
+    }
+
+    .segmented {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: end;
+      max-width: 760px;
+    }
+
+    .segmented button {
+      border: 1px solid #bcc7c0;
+      background: #f8faf8;
+      color: #223029;
+      border-radius: 7px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .segmented button.active {
+      background: #183a2a;
+      color: #fff;
+      border-color: #183a2a;
+    }
+
+    .concept {
+      display: none;
+      background: var(--panel);
+      border: 1px solid #c8d1ca;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      min-height: 820px;
+      overflow: hidden;
+    }
+
+    .concept.active { display: block; }
+
+    .app-shell {
+      min-height: 820px;
+      background: var(--app-bg);
+      display: grid;
+    }
+
+    .topbar {
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.86);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      background: #254b36;
+      flex: 0 0 auto;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .icon-btn, .cmd-btn {
+      height: 32px;
+      border: 1px solid #c3ccc5;
+      background: #fff;
+      color: #1c2922;
+      border-radius: 7px;
+      padding: 0 10px;
+      font: inherit;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      border: 1.5px solid currentColor;
+      border-radius: 5px;
+      display: inline-grid;
+      place-items: center;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .cmd-btn.primary {
+      background: #1d6b49;
+      border-color: #1d6b49;
+      color: #fff;
+    }
+
+    .cmd-btn.warning {
+      background: #fff7e5;
+      border-color: #e3b45d;
+      color: #7a4b00;
+    }
+
+    .cmd-btn.danger {
+      background: #fff0f0;
+      border-color: #e0a09a;
+      color: #9b1c14;
+    }
+
+    .provider-dot {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 11px;
+      flex: 0 0 auto;
+    }
+
+    .codex { background: #244f3a; }
+    .claude { background: #8a4b2a; }
+    .gemini { background: #246b8f; }
+    .cursor { background: #222831; }
+    .api { background: #19706b; }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .status.ready { color: #0f6b3f; background: #e4f6ea; }
+    .status.warn { color: #8a5200; background: #fff4d9; }
+    .status.bad { color: #a21d16; background: #ffe8e8; }
+    .status.idle { color: #466171; background: #eaf2f5; }
+
+    .status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .metric {
+      min-width: 0;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+
+    .metric label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    .progress {
+      height: 7px;
+      border-radius: 999px;
+      background: #e6ece8;
+      overflow: hidden;
+    }
+
+    .progress > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+    }
+
+    .progress.warn > span { background: #c98516; }
+    .progress.bad > span { background: var(--red); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 10px;
+      border-bottom: 1px solid #e2e8e3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    th {
+      color: #52635a;
+      font-size: 11px;
+      font-weight: 700;
+      background: #f7faf8;
+    }
+
+    tr.selected td {
+      background: #e5f1eb;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 270px 1fr;
+      min-height: 766px;
+    }
+
+    .side {
+      background: #f8faf8;
+      border-right: 1px solid var(--line);
+      padding: 16px;
+      min-width: 0;
+    }
+
+    .side-title {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 800;
+      margin: 14px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      height: 38px;
+      padding: 0 9px;
+      border-radius: 7px;
+      color: #233129;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .nav-item.active {
+      background: #e3efe8;
+      font-weight: 700;
+    }
+
+    .main-pane {
+      min-width: 0;
+      padding: 18px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      min-width: 0;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      min-height: 50px;
+    }
+
+    .panel-head h2 {
+      font-size: 14px;
+      font-weight: 750;
+    }
+
+    .panel-body {
+      padding: 14px;
+    }
+
+    .card-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid #e1e8e3;
+      border-radius: var(--radius);
+      background: #fff;
+      margin-bottom: 9px;
+      min-width: 0;
+    }
+
+    .account-id {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .account-id strong {
+      display: block;
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-id span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .small-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .mini-stat {
+      background: #f8faf8;
+      border: 1px solid #e1e8e3;
+      border-radius: 7px;
+      padding: 9px;
+      min-width: 0;
+    }
+
+    .mini-stat label {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      margin-bottom: 4px;
+    }
+
+    .mini-stat strong {
+      font-size: 13px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+    }
+
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 86px 1fr 78px;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .bar {
+      height: 12px;
+      border-radius: 999px;
+      background: #e7ece8;
+      overflow: hidden;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    .bar.green span { background: #2f7d4e; }
+    .bar.orange span { background: #c17a1a; }
+    .bar.red span { background: #be3027; }
+    .bar.blue span { background: #246b8f; }
+
+    /* Concept 1 */
+    .ops .app-shell { grid-template-rows: 54px 1fr; }
+    .ops .main-pane { display: grid; grid-template-rows: auto 1fr; gap: 14px; }
+    .ops .table-wrap { overflow: hidden; }
+    .ops th:nth-child(1) { width: 23%; }
+    .ops th:nth-child(2) { width: 11%; }
+    .ops th:nth-child(3) { width: 12%; }
+    .ops th:nth-child(4) { width: 12%; }
+    .ops th:nth-child(5) { width: 12%; }
+    .ops th:nth-child(6) { width: 12%; }
+    .ops th:nth-child(7) { width: 18%; }
+
+    /* Concept 2 */
+    .command .app-shell {
+      grid-template-rows: 54px 1fr;
+      background: #edf3f1;
+    }
+    .command .main-pane {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 14px;
+    }
+    .provider-stack {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .provider-card {
+      min-height: 210px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 14px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
+    }
+    .provider-card .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .launch-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+    }
+    .launch-strip button {
+      height: 30px;
+      border-radius: 7px;
+      border: 1px solid #c8d1ca;
+      background: #f8faf8;
+      font-size: 11px;
+    }
+
+    /* Concept 3 */
+    .switchboard .app-shell {
+      grid-template-rows: 54px 1fr;
+      background: #eef2f4;
+    }
+    .switch-layout {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 16px;
+      padding: 18px;
+    }
+    .big-account {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+    .switch-target {
+      border: 2px solid #1d6b49;
+      background: #f4fbf7;
+    }
+    .action-stack {
+      display: grid;
+      gap: 9px;
+      margin-top: 14px;
+    }
+    .action-stack .cmd-btn {
+      height: 42px;
+      justify-content: flex-start;
+    }
+    .process-list {
+      display: grid;
+      gap: 8px;
+    }
+    .process-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid #e1e8e3;
+      border-radius: 7px;
+      font-size: 12px;
+      background: #fff;
+    }
+
+    /* Concept 4 */
+    .timeline-view .app-shell {
+      grid-template-rows: 54px 1fr;
+      background: #f0f2ee;
+    }
+    .timeline-layout {
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 14px;
+    }
+    .time-grid {
+      display: grid;
+      grid-template-columns: 140px repeat(7, 1fr);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #fff;
+    }
+    .time-cell {
+      min-height: 56px;
+      border-right: 1px solid #e2e8e3;
+      border-bottom: 1px solid #e2e8e3;
+      padding: 8px;
+      font-size: 11px;
+      min-width: 0;
+    }
+    .time-cell.header {
+      background: #f7faf8;
+      color: var(--muted);
+      font-weight: 800;
+      min-height: 38px;
+    }
+    .time-cell.rowhead {
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .usage-block {
+      height: 18px;
+      border-radius: 5px;
+      margin-top: 6px;
+      background: #dbeee3;
+    }
+    .usage-block.warn { background: #ffe2a9; }
+    .usage-block.bad { background: #ffd1ce; }
+
+    /* Concept 5 */
+    .compact .app-shell {
+      grid-template-columns: 68px 1fr 310px;
+      min-height: 820px;
+      background: #eef2ef;
+    }
+    .rail {
+      background: #18251f;
+      padding: 12px 9px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .rail .provider-dot {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+    .compact-main {
+      padding: 16px;
+      display: grid;
+      grid-template-rows: 48px 1fr;
+      gap: 12px;
+      min-width: 0;
+    }
+    .compact-list {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+    .compact-account {
+      display: grid;
+      grid-template-columns: 1fr 95px 95px 115px;
+      gap: 8px;
+      align-items: center;
+      min-height: 58px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 9px 10px;
+    }
+    .details-pane {
+      background: #fff;
+      border-left: 1px solid var(--line);
+      padding: 16px;
+    }
+
+    /* Concept 6 */
+    .admin .app-shell {
+      grid-template-rows: 54px 1fr;
+      background: #edf1f3;
+    }
+    .admin-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: 766px;
+    }
+    .policy-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .policy-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 14px;
+      min-height: 150px;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #e5ebe6;
+      font-size: 12px;
+    }
+    .toggle {
+      width: 38px;
+      height: 20px;
+      border-radius: 999px;
+      background: #d6ded8;
+      position: relative;
+      flex: 0 0 auto;
+    }
+    .toggle::after {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      top: 2px;
+      left: 2px;
+      border-radius: 999px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    .toggle.on { background: #2f7d4e; }
+    .toggle.on::after { left: 20px; }
+
+    @media (max-width: 1100px) {
+      .board-header { grid-template-columns: 1fr; }
+      .segmented { justify-content: start; }
+      .split,
+      .command .main-pane,
+      .switch-layout,
+      .timeline-layout,
+      .admin-layout,
+      .compact .app-shell {
+        grid-template-columns: 1fr;
+      }
+      .grid-4, .grid-3, .provider-stack, .policy-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .details-pane, .side {
+        border-left: 0;
+        border-right: 0;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .board { padding: 12px; }
+      .concept, .app-shell { min-height: auto; }
+      .topbar { height: auto; min-height: 54px; align-items: flex-start; flex-direction: column; padding: 12px; }
+      .toolbar { justify-content: start; }
+      .grid-4, .grid-3, .provider-stack, .policy-grid {
+        grid-template-columns: 1fr;
+      }
+      .compact-account {
+        grid-template-columns: 1fr;
+      }
+      .time-grid {
+        grid-template-columns: 1fr;
+      }
+      .time-cell { min-height: 42px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="board-header">
+      <div>
+        <h1>AI Account Hub GUI Concepts</h1>
+        <p class="subtitle">Six visual directions for a multi-provider account/session utility covering Codex, Claude, Gemini, Cursor, and API-key backed profiles.</p>
+      </div>
+      <nav class="segmented" aria-label="Design concepts">
+        <button class="active" data-target="ops">1 Ops Console</button>
+        <button data-target="command">2 Command Deck</button>
+        <button data-target="switchboard">3 Switchboard</button>
+        <button data-target="timeline-view">4 Timeline</button>
+        <button data-target="compact">5 Compact</button>
+        <button data-target="admin">6 Admin</button>
+      </nav>
+    </header>
+
+    <section class="concept ops active" data-concept="ops">
+      <div class="app-shell">
+        <div class="topbar">
+          <div class="brand"><div class="mark">AH</div><div><strong>Ops Console</strong><span>Dense control surface for daily use</span></div></div>
+          <div class="toolbar">
+            <button class="cmd-btn"><span class="icon">R</span>Refresh All</button>
+            <button class="cmd-btn warning"><span class="icon">T</span>Set Timer</button>
+            <button class="cmd-btn primary"><span class="icon">S</span>Switch Desktop</button>
+          </div>
+        </div>
+        <div class="main-pane">
+          <div class="grid-4">
+            <div class="metric"><label>Total profiles</label><strong>12</strong></div>
+            <div class="metric"><label>Ready now</label><strong>8</strong></div>
+            <div class="metric"><label>Not ready</label><strong>3</strong></div>
+            <div class="metric"><label>Reset credits</label><strong>2</strong></div>
+          </div>
+          <div class="panel table-wrap">
+            <div class="panel-head">
+              <h2>Provider pool</h2>
+              <div class="toolbar">
+                <button class="icon-btn"><span class="icon">F</span>Filter</button>
+                <button class="icon-btn"><span class="icon">+</span>Add Profile</button>
+              </div>
+            </div>
+            <table>
+              <thead><tr><th>Profile</th><th>Provider</th><th>State</th><th>5h Left</th><th>5h Reset</th><th>Weekly Left</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr class="selected"><td>Gmail Login</td><td>Codex</td><td><span class="status ready">Ready</span></td><td>53%</td><td>0</td><td>93%</td><td>Switch, CLI, Limits</td></tr>
+                <tr><td>ACCA Login</td><td>Codex</td><td><span class="status ready">Ready</span></td><td>33%</td><td>0</td><td>73%</td><td>Switch, CLI, Limits</td></tr>
+                <tr><td>Proton Work</td><td>Codex</td><td><span class="status bad">Not Ready</span></td><td>0%</td><td>31m</td><td>82%</td><td>Reset Credit, Limits</td></tr>
+                <tr><td>Claude Main</td><td>Claude</td><td><span class="status ready">Ready</span></td><td>-</td><td>-</td><td>68%</td><td>Launch, Status</td></tr>
+                <tr><td>Gemini Personal</td><td>Gemini</td><td><span class="status warn">Needs Login</span></td><td>-</td><td>-</td><td>-</td><td>Login, Doctor</td></tr>
+                <tr><td>Cursor Pro</td><td>Cursor</td><td><span class="status idle">Idle</span></td><td>-</td><td>-</td><td>-</td><td>Agent, Desktop</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="concept command" data-concept="command">
+      <div class="app-shell">
+        <div class="topbar">
+          <div class="brand"><div class="mark">CD</div><div><strong>Command Deck</strong><span>Provider-first launcher with clear launch targets</span></div></div>
+          <div class="toolbar"><button class="cmd-btn">Audit</button><button class="cmd-btn primary">New Profile</button></div>
+        </div>
+        <div class="main-pane">
+          <div class="provider-stack">
+            <article class="provider-card">
+              <div class="top"><div class="account-id"><div class="provider-dot codex">CX</div><div><strong>Codex</strong><span>3 profiles, 2 ready</span></div></div><span class="status ready">Online</span></div>
+              <div class="small-grid"><div class="mini-stat"><label>Best account</label><strong>Gmail Login</strong></div><div class="mini-stat"><label>Reset credits</label><strong>1</strong></div><div class="mini-stat"><label>5h left</label><strong>53%</strong></div><div class="mini-stat"><label>Weekly left</label><strong>93%</strong></div></div>
+              <div class="launch-strip"><button>Desktop</button><button>CLI</button><button>Limits</button></div>
+            </article>
+            <article class="provider-card">
+              <div class="top"><div class="account-id"><div class="provider-dot claude">CL</div><div><strong>Claude</strong><span>2 profiles, 2 ready</span></div></div><span class="status ready">Ready</span></div>
+              <div class="small-grid"><div class="mini-stat"><label>Config dir</label><strong>Isolated</strong></div><div class="mini-stat"><label>Default</label><strong>Work</strong></div><div class="mini-stat"><label>Desktop</label><strong>N/A</strong></div><div class="mini-stat"><label>CLI</label><strong>Ready</strong></div></div>
+              <div class="launch-strip"><button>Claude</button><button>Status</button><button>Login</button></div>
+            </article>
+            <article class="provider-card">
+              <div class="top"><div class="account-id"><div class="provider-dot gemini">GM</div><div><strong>Gemini</strong><span>3 profiles, 1 needs login</span></div></div><span class="status warn">Mixed</span></div>
+              <div class="small-grid"><div class="mini-stat"><label>Auth mode</label><strong>Google</strong></div><div class="mini-stat"><label>API key</label><strong>1 profile</strong></div><div class="mini-stat"><label>Vertex</label><strong>Off</strong></div><div class="mini-stat"><label>Status</label><strong>Review</strong></div></div>
+              <div class="launch-strip"><button>Gemini</button><button>Config</button><button>Login</button></div>
+            </article>
+            <article class="provider-card">
+              <div class="top"><div class="account-id"><div class="provider-dot cursor">CR</div><div><strong>Cursor</strong><span>CLI and desktop adapter</span></div></div><span class="status idle">Idle</span></div>
+              <div class="small-grid"><div class="mini-stat"><label>Agent</label><strong>Installed</strong></div><div class="mini-stat"><label>Desktop</label><strong>Audit</strong></div><div class="mini-stat"><label>Profiles</label><strong>2</strong></div><div class="mini-stat"><label>Rules</label><strong>Manual</strong></div></div>
+              <div class="launch-strip"><button>Agent</button><button>Desktop</button><button>Status</button></div>
+            </article>
+          </div>
+          <aside class="panel">
+            <div class="panel-head"><h2>Selected action</h2><span class="status ready">Safe</span></div>
+            <div class="panel-body">
+              <div class="card-row"><div class="account-id"><span class="icon">1</span><div><strong>Stop desktop processes</strong><span>Codex only</span></div></div><span>8 found</span></div>
+              <div class="card-row"><div class="account-id"><span class="icon">2</span><div><strong>Save active auth</strong><span>Opaque file copy</span></div></div><span>Ready</span></div>
+              <div class="card-row"><div class="account-id"><span class="icon">3</span><div><strong>Launch target</strong><span>C:\Users\batty\Documents\Codex</span></div></div><span>Desktop</span></div>
+              <button class="cmd-btn primary" style="width:100%;height:40px;margin-top:8px;">Run Switch</button>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="concept switchboard" data-concept="switchboard">
+      <div class="app-shell">
+        <div class="topbar">
+          <div class="brand"><div class="mark">SB</div><div><strong>Desktop Switchboard</strong><span>Best for Codex and Cursor desktop account switching</span></div></div>
+          <div class="toolbar"><button class="cmd-btn">Save State</button><button class="cmd-btn primary">Switch Now</button></div>
+        </div>
+        <div class="switch-layout">
+          <aside class="big-account switch-target">
+            <div class="account-id"><div class="provider-dot codex">CX</div><div><strong>Gmail Login</strong><span>Codex desktop target</span></div></div>
+            <div class="small-grid">
+              <div class="mini-stat"><label>State</label><strong>Ready</strong></div>
+              <div class="mini-stat"><label>5h left</label><strong>53%</strong></div>
+              <div class="mini-stat"><label>Weekly reset</label><strong>6d 23h</strong></div>
+              <div class="mini-stat"><label>Credits</label><strong>0</strong></div>
+            </div>
+            <div class="action-stack">
+              <button class="cmd-btn primary"><span class="icon">S</span>Switch Desktop Account</button>
+              <button class="cmd-btn"><span class="icon">L</span>Open CLI</button>
+              <button class="cmd-btn"><span class="icon">R</span>Refresh Limits</button>
+              <button class="cmd-btn danger"><span class="icon">K</span>Stop Desktop Processes</button>
+            </div>
+          </aside>
+          <section class="panel">
+            <div class="panel-head"><h2>Switch sequence</h2><span class="status idle">Preview</span></div>
+            <div class="panel-body process-list">
+              <div class="process-item"><span>Codex.exe desktop process</span><strong>Close</strong></div>
+              <div class="process-item"><span>resources\codex.exe helper</span><strong>Stop</strong></div>
+              <div class="process-item"><span>Save active desktop auth</span><strong>Done</strong></div>
+              <div class="process-item"><span>Copy selected profile auth</span><strong>Ready</strong></div>
+              <div class="process-item"><span>Launch workspace</span><strong>Codex</strong></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="concept timeline-view" data-concept="timeline-view">
+      <div class="app-shell">
+        <div class="topbar">
+          <div class="brand"><div class="mark">TL</div><div><strong>Limit Timeline</strong><span>Usage windows and reset planning</span></div></div>
+          <div class="toolbar"><button class="cmd-btn">Today</button><button class="cmd-btn">7 days</button><button class="cmd-btn primary">Refresh</button></div>
+        </div>
+        <div class="timeline-layout">
+          <section class="panel">
+            <div class="panel-head"><h2>Weekly usage map</h2><span class="status ready">Live</span></div>
+            <div class="panel-body">
+              <div class="time-grid">
+                <div class="time-cell header">Profile</div><div class="time-cell header">Mon</div><div class="time-cell header">Tue</div><div class="time-cell header">Wed</div><div class="time-cell header">Thu</div><div class="time-cell header">Fri</div><div class="time-cell header">Sat</div><div class="time-cell header">Sun</div>
+                <div class="time-cell rowhead"><div class="provider-dot codex">CX</div>Gmail</div><div class="time-cell"><div class="usage-block"></div></div><div class="time-cell"><div class="usage-block warn"></div></div><div class="time-cell"></div><div class="time-cell"></div><div class="time-cell"></div><div class="time-cell"><div class="usage-block"></div></div><div class="time-cell"><div class="usage-block"></div></div>
+                <div class="time-cell rowhead"><div class="provider-dot codex">CX</div>ACCA</div><div class="time-cell"><div class="usage-block bad"></div></div><div class="time-cell"><div class="usage-block"></div></div><div class="time-cell"><div class="usage-block"></div></div><div class="time-cell"></div><div class="time-cell"><div class="usage-block warn"></div></div><div class="time-cell"></div><div class="time-cell"></div>
+                <div class="time-cell rowhead"><div class="provider-dot claude">CL</div>Claude</div><div class="time-cell"></div><div class="time-cell"><div class="usage-block"></div></div><div class="time-cell"></div><div class="time-cell"><div class="usage-block"></div></div><div class="time-cell"></div><div class="time-cell"></div><div class="time-cell"></div>
+              </div>
+            </div>
+          </section>
+          <aside class="panel">
+            <div class="panel-head"><h2>Next available windows</h2></div>
+            <div class="panel-body timeline">
+              <div class="timeline-row"><strong>Gmail</strong><div class="bar green"><span style="width:93%"></span></div><span>6d 23h</span></div>
+              <div class="timeline-row"><strong>ACCA</strong><div class="bar orange"><span style="width:73%"></span></div><span>11h 06m</span></div>
+              <div class="timeline-row"><strong>Proton</strong><div class="bar red"><span style="width:82%"></span></div><span>4d 11h</span></div>
+              <div class="timeline-row"><strong>Claude</strong><div class="bar blue"><span style="width:68%"></span></div><span>Ready</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="concept compact" data-concept="compact">
+      <div class="app-shell">
+        <aside class="rail">
+          <div class="provider-dot codex">CX</div>
+          <div class="provider-dot claude">CL</div>
+          <div class="provider-dot gemini">GM</div>
+          <div class="provider-dot cursor">CR</div>
+          <div class="provider-dot api">API</div>
+        </aside>
+        <section class="compact-main">
+          <div class="topbar" style="height:48px;padding:0 12px;border:1px solid var(--line);border-radius:8px;"><div class="brand"><strong>Compact Operator</strong></div><div class="toolbar"><button class="cmd-btn">Refresh</button><button class="cmd-btn primary">Switch</button></div></div>
+          <div class="compact-list">
+            <div class="compact-account"><div class="account-id"><div class="provider-dot codex">CX</div><div><strong>Gmail Login</strong><span>Codex desktop + CLI</span></div></div><span class="status ready">Ready</span><strong>53%</strong><span>6d 23h</span></div>
+            <div class="compact-account"><div class="account-id"><div class="provider-dot codex">CX</div><div><strong>ACCA Login</strong><span>Codex profile</span></div></div><span class="status ready">Ready</span><strong>33%</strong><span>11h 06m</span></div>
+            <div class="compact-account"><div class="account-id"><div class="provider-dot claude">CL</div><div><strong>Claude Work</strong><span>Config dir isolated</span></div></div><span class="status ready">Ready</span><strong>-</strong><span>Ready</span></div>
+            <div class="compact-account"><div class="account-id"><div class="provider-dot gemini">GM</div><div><strong>Gemini Lab</strong><span>Google auth</span></div></div><span class="status warn">Login</span><strong>-</strong><span>-</span></div>
+            <div class="compact-account"><div class="account-id"><div class="provider-dot cursor">CR</div><div><strong>Cursor Pro</strong><span>Agent profile</span></div></div><span class="status idle">Idle</span><strong>-</strong><span>-</span></div>
+          </div>
+        </section>
+        <aside class="details-pane">
+          <div class="brand"><div class="provider-dot codex">CX</div><div><strong>Gmail Login</strong><span>Selected profile</span></div></div>
+          <div class="small-grid">
+            <div class="mini-stat"><label>Home</label><strong>account-1</strong></div>
+            <div class="mini-stat"><label>State</label><strong>Ready</strong></div>
+            <div class="mini-stat"><label>5h reset</label><strong>0</strong></div>
+            <div class="mini-stat"><label>Weekly</label><strong>6d 23h</strong></div>
+          </div>
+          <div class="action-stack">
+            <button class="cmd-btn primary">Switch Desktop</button>
+            <button class="cmd-btn">Open CLI</button>
+            <button class="cmd-btn">Device Login</button>
+            <button class="cmd-btn">Open Profile Folder</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="concept admin" data-concept="admin">
+      <div class="app-shell">
+        <div class="topbar">
+          <div class="brand"><div class="mark">AD</div><div><strong>Provider Admin</strong><span>Configuration, guardrails, and provider adapters</span></div></div>
+          <div class="toolbar"><button class="cmd-btn">Export</button><button class="cmd-btn primary">Save Policy</button></div>
+        </div>
+        <div class="admin-layout">
+          <aside class="side">
+            <div class="side-title">Providers</div>
+            <div class="nav-item active"><div class="provider-dot codex">CX</div>Codex</div>
+            <div class="nav-item"><div class="provider-dot claude">CL</div>Claude</div>
+            <div class="nav-item"><div class="provider-dot gemini">GM</div>Gemini</div>
+            <div class="nav-item"><div class="provider-dot cursor">CR</div>Cursor</div>
+            <div class="side-title">System</div>
+            <div class="nav-item"><span class="icon">P</span>Processes</div>
+            <div class="nav-item"><span class="icon">A</span>Auth Store</div>
+            <div class="nav-item"><span class="icon">L</span>Logs</div>
+          </aside>
+          <main class="main-pane">
+            <div class="policy-grid">
+              <div class="policy-card"><h3>Switch Rules</h3><div class="toggle-row"><span>Manual account switch only</span><span class="toggle on"></span></div><div class="toggle-row"><span>Auto route on rate limit</span><span class="toggle"></span></div><div class="toggle-row"><span>Stop desktop processes</span><span class="toggle on"></span></div></div>
+              <div class="policy-card"><h3>Auth Handling</h3><div class="toggle-row"><span>Opaque file copy</span><span class="toggle on"></span></div><div class="toggle-row"><span>Token display</span><span class="toggle"></span></div><div class="toggle-row"><span>Backup default auth</span><span class="toggle on"></span></div></div>
+              <div class="policy-card"><h3>Usage Data</h3><div class="toggle-row"><span>Refresh manually</span><span class="toggle on"></span></div><div class="toggle-row"><span>Estimate weekly reset</span><span class="toggle on"></span></div><div class="toggle-row"><span>Reset credit confirm</span><span class="toggle on"></span></div></div>
+            </div>
+            <div class="panel" style="margin-top:14px;">
+              <div class="panel-head"><h2>Adapter contract</h2><span class="status ready">Codex ready</span></div>
+              <table>
+                <thead><tr><th>Provider</th><th>Profile root</th><th>Login</th><th>Status</th><th>Launch</th><th>Usage</th></tr></thead>
+                <tbody>
+                  <tr><td>Codex</td><td>CODEX_HOME</td><td>codex login</td><td>login status</td><td>app / CLI</td><td>app-server</td></tr>
+                  <tr><td>Claude</td><td>CLAUDE_CONFIG_DIR</td><td>claude login</td><td>config check</td><td>claude</td><td>provider TBD</td></tr>
+                  <tr><td>Gemini</td><td>.gemini profile</td><td>google/API</td><td>settings check</td><td>gemini</td><td>provider TBD</td></tr>
+                  <tr><td>Cursor</td><td>agent profile</td><td>cursor-agent</td><td>agent status</td><td>agent/desktop</td><td>provider TBD</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </main>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const buttons = document.querySelectorAll(".segmented button");
+    const concepts = document.querySelectorAll(".concept");
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = button.dataset.target;
+        buttons.forEach((item) => item.classList.toggle("active", item === button));
+        concepts.forEach((concept) => concept.classList.toggle("active", concept.dataset.concept === target));
+      });
+    });
+  </script>
+</body>
+</html>

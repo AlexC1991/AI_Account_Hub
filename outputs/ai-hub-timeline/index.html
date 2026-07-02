@@ -1,0 +1,1169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Account Hub - Timeline Prototype</title>
+  <style>
+    :root {
+      --ink: #17211c;
+      --muted: #65746d;
+      --soft: #eef3f0;
+      --panel: #ffffff;
+      --line: #d9e2dc;
+      --line-strong: #b8c6bf;
+      --green: #2c7a4b;
+      --green-2: #dff2e6;
+      --red: #b42318;
+      --red-2: #ffe7e5;
+      --amber: #a46400;
+      --amber-2: #fff1d2;
+      --blue: #246f94;
+      --blue-2: #e2f1f7;
+      --violet: #6a4c93;
+      --violet-2: #efe7f7;
+      --charcoal: #1d2a24;
+      --shadow: 0 18px 52px rgba(25, 36, 30, 0.16);
+      --radius: 8px;
+      --cell-h: 58px;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #dfe7e2;
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    .app {
+      height: 100vh;
+      min-height: 780px;
+      display: grid;
+      grid-template-rows: 56px 1fr;
+      background: #eef3f0;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+      min-width: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 220px;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: #254c37;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.1;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .btn {
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid #c3cec7;
+      border-radius: 7px;
+      background: #fff;
+      color: #1b2922;
+      padding: 0 10px;
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .btn.primary {
+      background: #1f6b49;
+      color: #fff;
+      border-color: #1f6b49;
+    }
+
+    .btn.warning {
+      background: var(--amber-2);
+      color: #774700;
+      border-color: #e2b660;
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      border: 1.5px solid currentColor;
+      border-radius: 5px;
+      display: inline-grid;
+      place-items: center;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .layout {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 72px 1fr 360px;
+    }
+
+    .rail {
+      border-right: 1px solid var(--line);
+      background: #1b2922;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 8px;
+    }
+
+    .rail button {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .rail button.active {
+      background: #ffffff;
+      color: #1b2922;
+    }
+
+    .rail .spacer {
+      flex: 1;
+    }
+
+    .main {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 11px 12px;
+      min-width: 0;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.8) inset;
+    }
+
+    .metric label {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1.05;
+      letter-spacing: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .controls {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .search {
+      height: 36px;
+      border-radius: 7px;
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      padding: 0 11px;
+      color: var(--ink);
+      min-width: 0;
+    }
+
+    .segmented {
+      display: inline-flex;
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      border-radius: 7px;
+      padding: 3px;
+      gap: 3px;
+      height: 36px;
+    }
+
+    .segmented button {
+      border: 0;
+      background: transparent;
+      color: #26362e;
+      border-radius: 5px;
+      padding: 0 10px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .segmented button.active {
+      background: #1f6b49;
+      color: #fff;
+    }
+
+    .provider-chips {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .chip {
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #c7d0ca;
+      background: #fff;
+      color: #223029;
+      border-radius: 7px;
+      padding: 0 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .chip.active {
+      border-color: #1f6b49;
+      box-shadow: inset 0 0 0 1px #1f6b49;
+    }
+
+    .dot {
+      width: 18px;
+      height: 18px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 5px;
+      color: #fff;
+      font-size: 9px;
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+
+    .codex { background: #254c37; }
+    .claude { background: #8a4e2e; }
+    .gemini { background: #246f94; }
+    .cursor { background: #242a32; }
+    .api { background: #19706b; }
+
+    .timeline-shell {
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      box-shadow: var(--shadow);
+    }
+
+    .timeline-head {
+      display: grid;
+      grid-template-columns: 248px repeat(7, minmax(92px, 1fr));
+      border-bottom: 1px solid var(--line);
+      background: #f8faf8;
+      min-width: 940px;
+    }
+
+    .head-cell {
+      min-height: 48px;
+      padding: 9px 10px;
+      border-right: 1px solid #e2e9e4;
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 2px;
+    }
+
+    .head-cell strong {
+      color: #1e2d25;
+      font-size: 12px;
+    }
+
+    .timeline-scroll {
+      overflow: auto;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .timeline-grid {
+      display: grid;
+      grid-template-columns: 248px repeat(7, minmax(92px, 1fr));
+      min-width: 940px;
+    }
+
+    .account-cell {
+      min-height: var(--cell-h);
+      border-right: 1px solid #e2e9e4;
+      border-bottom: 1px solid #e2e9e4;
+      padding: 9px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      background: #fff;
+      min-width: 0;
+    }
+
+    .account-cell.selected {
+      background: #e6f3ec;
+      box-shadow: inset 3px 0 0 #1f6b49;
+    }
+
+    .account-title {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .account-title strong {
+      display: block;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .account-title span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .status.ready { color: #11683f; background: #e4f5eb; }
+    .status.warn { color: #8d5600; background: #fff1d2; }
+    .status.bad { color: #a61e17; background: #ffe7e5; }
+    .status.idle { color: #496471; background: #e6f1f5; }
+
+    .status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .day-cell {
+      position: relative;
+      min-height: var(--cell-h);
+      border-right: 1px solid #e2e9e4;
+      border-bottom: 1px solid #e2e9e4;
+      padding: 8px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .day-cell:hover {
+      background: #f7fbf8;
+    }
+
+    .day-cell.active {
+      outline: 2px solid #1f6b49;
+      outline-offset: -2px;
+      background: #f0f8f3;
+    }
+
+    .usage-stack {
+      height: 28px;
+      display: grid;
+      gap: 4px;
+      align-content: center;
+    }
+
+    .usage-bar {
+      height: 10px;
+      border-radius: 999px;
+      background: #edf2ef;
+      overflow: hidden;
+    }
+
+    .usage-bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    .usage-bar.light span { background: #8fc7a5; }
+    .usage-bar.medium span { background: #c88b28; }
+    .usage-bar.heavy span { background: #c73d32; }
+    .usage-bar.blue span { background: #5095b8; }
+    .usage-bar.violet span { background: #8a69ad; }
+
+    .day-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .reset-pin {
+      position: absolute;
+      right: 7px;
+      top: 7px;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #1f6b49;
+      box-shadow: 0 0 0 3px rgba(31, 107, 73, 0.12);
+    }
+
+    .drawer {
+      min-width: 0;
+      min-height: 0;
+      border-left: 1px solid var(--line);
+      background: #fbfcfb;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+    }
+
+    .drawer-section {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .drawer-section h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.2;
+    }
+
+    .drawer-section p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .drawer-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .detail {
+      border: 1px solid #e2e9e4;
+      border-radius: 7px;
+      background: #fff;
+      padding: 9px;
+      min-width: 0;
+    }
+
+    .detail label {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .detail strong {
+      display: block;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .event-list {
+      min-height: 0;
+      overflow: auto;
+      padding: 12px 14px;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+    }
+
+    .event {
+      border: 1px solid #e2e9e4;
+      border-radius: 7px;
+      background: #fff;
+      padding: 10px;
+      display: grid;
+      gap: 5px;
+    }
+
+    .event-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .event p {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      margin: 0;
+    }
+
+    .drawer-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px 14px;
+      background: #fff;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      align-items: center;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    .swatch {
+      width: 16px;
+      height: 8px;
+      border-radius: 99px;
+      background: #8fc7a5;
+    }
+
+    .swatch.medium { background: #c88b28; }
+    .swatch.heavy { background: #c73d32; }
+    .swatch.reset {
+      width: 8px;
+      height: 8px;
+      border-radius: 99px;
+      background: #1f6b49;
+    }
+
+    @media (max-width: 1180px) {
+      .layout {
+        grid-template-columns: 60px 1fr;
+      }
+      .drawer {
+        display: none;
+      }
+      .summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .controls {
+        grid-template-columns: 1fr;
+      }
+      .provider-chips {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        height: auto;
+        min-height: 100vh;
+      }
+      .topbar {
+        height: auto;
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 12px;
+      }
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      .rail {
+        flex-direction: row;
+        height: 62px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .rail .spacer {
+        display: none;
+      }
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+      .main {
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">AH</div>
+        <div>
+          <strong>AI Account Hub Timeline</strong>
+          <span>Provider usage windows, reset planning, and launch decisions</span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn"><span class="icon">F</span>Refresh Limits</button>
+        <button class="btn warning"><span class="icon">T</span>Set Manual Timer</button>
+        <button class="btn primary"><span class="icon">S</span>Switch Desktop</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="rail" aria-label="Provider navigation">
+        <button class="active" data-provider="all" title="All providers">ALL</button>
+        <button data-provider="codex" title="Codex">CX</button>
+        <button data-provider="claude" title="Claude">CL</button>
+        <button data-provider="gemini" title="Gemini">GM</button>
+        <button data-provider="cursor" title="Cursor">CR</button>
+        <button data-provider="api" title="API">API</button>
+        <div class="spacer"></div>
+        <button title="Settings">SET</button>
+      </nav>
+
+      <main class="main">
+        <section class="summary-grid" aria-label="Summary">
+          <div class="metric"><label>Ready profiles</label><strong id="metricReady">8</strong><small>Manual switch only</small></div>
+          <div class="metric"><label>Not ready</label><strong id="metricBlocked">3</strong><small>Limits or login</small></div>
+          <div class="metric"><label>Next 5h recovery</label><strong>31m</strong><small>Proton Codex</small></div>
+          <div class="metric"><label>Next weekly recovery</label><strong>11h 06m</strong><small>ACCA Login</small></div>
+          <div class="metric"><label>Reset credits</label><strong>2</strong><small>Codex accounts</small></div>
+        </section>
+
+        <section class="controls">
+          <input id="searchBox" class="search" type="search" placeholder="Search profiles, providers, or workspaces" />
+          <div class="segmented" aria-label="Range">
+            <button class="active" data-range="7">7 days</button>
+            <button data-range="14">14 days</button>
+            <button data-range="30">30 days</button>
+          </div>
+          <div class="provider-chips">
+            <button class="chip active" data-provider="all"><span class="dot api">A</span>All</button>
+            <button class="chip" data-provider="codex"><span class="dot codex">CX</span>Codex</button>
+            <button class="chip" data-provider="claude"><span class="dot claude">CL</span>Claude</button>
+            <button class="chip" data-provider="gemini"><span class="dot gemini">GM</span>Gemini</button>
+            <button class="chip" data-provider="cursor"><span class="dot cursor">CR</span>Cursor</button>
+          </div>
+        </section>
+
+        <section class="timeline-shell">
+          <div class="timeline-head" id="timelineHead"></div>
+          <div class="timeline-scroll">
+            <div class="timeline-grid" id="timelineGrid"></div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="drawer" aria-label="Details">
+        <section class="drawer-section">
+          <div class="drawer-title">
+            <div>
+              <h2 id="detailTitle">Gmail Login</h2>
+              <p id="detailSubtitle">Codex profile, desktop-capable</p>
+            </div>
+            <span id="detailStatus" class="status ready">Ready</span>
+          </div>
+          <div class="legend">
+            <span class="legend-item"><span class="swatch"></span>Light</span>
+            <span class="legend-item"><span class="swatch medium"></span>Medium</span>
+            <span class="legend-item"><span class="swatch heavy"></span>Heavy</span>
+            <span class="legend-item"><span class="swatch reset"></span>Reset</span>
+          </div>
+        </section>
+
+        <section class="drawer-section">
+          <div class="detail-grid" id="detailGrid"></div>
+        </section>
+
+        <section class="event-list" id="eventList"></section>
+
+        <div class="drawer-actions">
+          <button class="btn">Open CLI</button>
+          <button class="btn primary">Launch Profile</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    function makeDays(count) {
+      const end = new Date(Date.UTC(2026, 5, 30));
+      const formatter = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
+      const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+      return Array.from({ length: count }, (_, index) => {
+        const date = new Date(end);
+        date.setUTCDate(end.getUTCDate() - (count - index - 1));
+        return {
+          key: date.toISOString().slice(0, 10),
+          label: formatter.format(date),
+          date: dateFormatter.format(date)
+        };
+      });
+    }
+
+    const ranges = {
+      7: makeDays(7),
+      14: makeDays(14),
+      30: makeDays(30)
+    };
+    let currentRange = "7";
+    let days = ranges[currentRange];
+
+    const profiles = [
+      {
+        id: "gmail",
+        name: "Gmail Login",
+        provider: "codex",
+        providerLabel: "Codex",
+        workspace: "C:\\Users\\batty\\Documents\\Codex",
+        state: "ready",
+        shortLeft: "53%",
+        shortReset: "0",
+        weeklyLeft: "93%",
+        weeklyReset: "6d 23h",
+        credits: "0",
+        launch: "Desktop + CLI",
+        usage: { jun28: 38, jun29: 45, jun30: 47, jul01: 0, jul02: 0, jul03: 0, jul04: 0 },
+        markerDay: "2026-06-30",
+        events: [
+          ["Reset credit applied", "Weekly window source moved back to Codex API reset."],
+          ["Desktop switch ready", "Opaque auth sync is available for this profile."],
+          ["Usage read", "Codex app-server returned 5h and weekly windows."]
+        ]
+      },
+      {
+        id: "acca",
+        name: "ACCA Login",
+        provider: "codex",
+        providerLabel: "Codex",
+        workspace: "C:\\Users\\batty\\Documents\\Codex",
+        state: "ready",
+        shortLeft: "33%",
+        shortReset: "0",
+        weeklyLeft: "73%",
+        weeklyReset: "11h 06m",
+        credits: "0",
+        launch: "Desktop + CLI",
+        usage: { jun28: 74, jun29: 31, jun30: 67, jul01: 0, jul02: 0, jul03: 0, jul04: 0 },
+        markerDay: "2026-06-25",
+        events: [
+          ["Weekly estimate", "Daily usage history points to the next recovery window."],
+          ["5h window ready", "Short window has available capacity."],
+          ["Desktop sync clean", "Previous auth can be saved back before switching."]
+        ]
+      },
+      {
+        id: "proton",
+        name: "Proton Work",
+        provider: "codex",
+        providerLabel: "Codex",
+        workspace: "C:\\Users\\batty\\Documents\\Codex",
+        state: "bad",
+        shortLeft: "0%",
+        shortReset: "31m",
+        weeklyLeft: "82%",
+        weeklyReset: "4d 11h",
+        credits: "1",
+        launch: "CLI",
+        usage: { jun28: 78, jun29: 52, jun30: 100, jul01: 0, jul02: 0, jul03: 0, jul04: 0 },
+        markerDay: "2026-06-30",
+        events: [
+          ["Not ready", "5h window is exhausted."],
+          ["Reset credit available", "Manual confirmation required before consuming it."],
+          ["Weekly estimate", "Recent usage history gives a day-level recovery estimate."]
+        ]
+      },
+      {
+        id: "claude-work",
+        name: "Claude Work",
+        provider: "claude",
+        providerLabel: "Claude",
+        workspace: "C:\\Users\\batty\\Projects",
+        state: "ready",
+        shortLeft: "-",
+        shortReset: "-",
+        weeklyLeft: "68%",
+        weeklyReset: "Ready",
+        credits: "-",
+        launch: "Claude CLI",
+        usage: { jun28: 0, jun29: 22, jun30: 18, jul01: 0, jul02: 19, jul03: 0, jul04: 0 },
+        markerDay: "",
+        events: [
+          ["Profile isolated", "CLAUDE_CONFIG_DIR points at this profile."],
+          ["Ready", "CLI launch target is available."],
+          ["Usage adapter pending", "Provider usage detail can be added later."]
+        ]
+      },
+      {
+        id: "gemini-lab",
+        name: "Gemini Lab",
+        provider: "gemini",
+        providerLabel: "Gemini",
+        workspace: "C:\\Users\\batty\\Labs",
+        state: "warn",
+        shortLeft: "-",
+        shortReset: "-",
+        weeklyLeft: "-",
+        weeklyReset: "-",
+        credits: "-",
+        launch: "Gemini CLI",
+        usage: { jun28: 0, jun29: 0, jun30: 0, jul01: 0, jul02: 0, jul03: 0, jul04: 0 },
+        markerDay: "",
+        events: [
+          ["Needs login", "Google auth state is missing for this profile."],
+          ["Config pending", "API key and Vertex modes can be represented separately."],
+          ["No usage data", "Usage adapter has not been connected."]
+        ]
+      },
+      {
+        id: "cursor-pro",
+        name: "Cursor Pro",
+        provider: "cursor",
+        providerLabel: "Cursor",
+        workspace: "C:\\Users\\batty\\Documents\\Codex",
+        state: "idle",
+        shortLeft: "-",
+        shortReset: "-",
+        weeklyLeft: "-",
+        weeklyReset: "-",
+        credits: "-",
+        launch: "cursor-agent",
+        usage: { jun28: 12, jun29: 8, jun30: 0, jul01: 0, jul02: 0, jul03: 0, jul04: 0 },
+        markerDay: "2026-06-29",
+        events: [
+          ["Agent installed", "cursor-agent can be launched from this profile."],
+          ["Desktop audit pending", "Desktop account switching needs local storage audit."],
+          ["Idle", "No active launch process."]
+        ]
+      },
+      {
+        id: "api-fallback",
+        name: "API Fallback",
+        provider: "api",
+        providerLabel: "API",
+        workspace: "Shared automation",
+        state: "ready",
+        shortLeft: "-",
+        shortReset: "-",
+        weeklyLeft: "Budget",
+        weeklyReset: "Ready",
+        credits: "$18",
+        launch: "Env profile",
+        usage: { jun28: 11, jun29: 14, jun30: 21, jul01: 8, jul02: 0, jul03: 0, jul04: 0 },
+        markerDay: "",
+        events: [
+          ["Budget mode", "Usage is controlled by configured spend budget."],
+          ["Safe fallback", "Useful for non-ChatGPT workflows."],
+          ["Manual selection", "Not auto-routed after rate-limit events."]
+        ]
+      }
+    ];
+
+    let selectedProvider = "all";
+    let selectedProfile = profiles[0].id;
+    let selectedDay = "2026-06-30";
+    let query = "";
+
+    const providerInitials = {
+      codex: "CX",
+      claude: "CL",
+      gemini: "GM",
+      cursor: "CR",
+      api: "API"
+    };
+
+    const stateLabels = {
+      ready: "Ready",
+      warn: "Needs Login",
+      bad: "Not Ready",
+      idle: "Idle"
+    };
+
+    function usageClass(value, provider) {
+      if (provider === "claude") return "blue";
+      if (provider === "cursor") return "violet";
+      if (value >= 80) return "heavy";
+      if (value >= 45) return "medium";
+      return "light";
+    }
+
+    function fakeUsage(profile, dayKey) {
+      if (Object.prototype.hasOwnProperty.call(profile.usage, dayKey)) {
+        return profile.usage[dayKey];
+      }
+      const compact = dayKey.replaceAll("-", "");
+      let score = 0;
+      for (const char of `${profile.id}${compact}`) score += char.charCodeAt(0);
+      if (profile.state === "warn") return 0;
+      if (profile.provider === "api") return Math.max(0, (score % 28) - 7);
+      if (profile.provider === "claude") return Math.max(0, (score % 42) - 10);
+      if (profile.provider === "cursor") return Math.max(0, (score % 26) - 8);
+      return Math.max(0, Math.min(100, (score % 86) + (profile.state === "bad" ? 15 : 0)));
+    }
+
+    function visibleProfiles() {
+      return profiles.filter((profile) => {
+        const providerOk = selectedProvider === "all" || profile.provider === selectedProvider;
+        const text = `${profile.name} ${profile.providerLabel} ${profile.workspace}`.toLowerCase();
+        const queryOk = !query || text.includes(query);
+        return providerOk && queryOk;
+      });
+    }
+
+    function renderHead() {
+      const head = document.getElementById("timelineHead");
+      head.innerHTML = "";
+      const first = document.createElement("div");
+      first.className = "head-cell";
+      first.innerHTML = "<strong>Profile</strong><span>Provider and state</span>";
+      head.appendChild(first);
+      days.forEach((day) => {
+        const cell = document.createElement("div");
+        cell.className = "head-cell";
+        cell.innerHTML = `<strong>${day.label}</strong><span>${day.date}</span>`;
+        head.appendChild(cell);
+      });
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById("timelineGrid");
+      grid.innerHTML = "";
+      const rows = visibleProfiles();
+      rows.forEach((profile) => {
+        const account = document.createElement("div");
+        account.className = `account-cell ${profile.id === selectedProfile ? "selected" : ""}`;
+        account.dataset.profile = profile.id;
+        account.innerHTML = `
+          <span class="dot ${profile.provider}">${providerInitials[profile.provider]}</span>
+          <span class="account-title"><strong>${profile.name}</strong><span>${profile.providerLabel} | ${profile.launch}</span></span>
+          <span class="status ${profile.state}">${stateLabels[profile.state]}</span>
+        `;
+        account.addEventListener("click", () => {
+          selectedProfile = profile.id;
+          render();
+        });
+        grid.appendChild(account);
+
+        days.forEach((day) => {
+          const value = fakeUsage(profile, day.key);
+          const cell = document.createElement("button");
+          cell.type = "button";
+          cell.className = `day-cell ${profile.id === selectedProfile && day.key === selectedDay ? "active" : ""}`;
+          cell.dataset.profile = profile.id;
+          cell.dataset.day = day.key;
+          const width = Math.max(7, Math.min(value, 100));
+          const hasUsage = value > 0;
+          const resetPin = profile.markerDay === day.key ? '<span class="reset-pin" title="Reset point"></span>' : "";
+          cell.innerHTML = `
+            ${resetPin}
+            <div class="usage-stack">
+              <div class="usage-bar ${usageClass(value, profile.provider)}"><span style="width:${hasUsage ? width : 0}%"></span></div>
+            </div>
+            <div class="day-meta"><span>${hasUsage ? value + "%" : "No use"}</span><span>${profile.markerDay === day.key ? "Event" : ""}</span></div>
+          `;
+          cell.addEventListener("click", () => {
+            selectedProfile = profile.id;
+            selectedDay = day.key;
+            render();
+          });
+          grid.appendChild(cell);
+        });
+      });
+      updateMetrics(rows);
+    }
+
+    function updateMetrics(rows) {
+      document.getElementById("metricReady").textContent = rows.filter((item) => item.state === "ready").length;
+      document.getElementById("metricBlocked").textContent = rows.filter((item) => item.state === "bad" || item.state === "warn").length;
+    }
+
+    function renderDetails() {
+      const profile = profiles.find((item) => item.id === selectedProfile) || profiles[0];
+      const day = days.find((item) => item.key === selectedDay) || days[2];
+      const usage = fakeUsage(profile, day.key);
+      document.getElementById("detailTitle").textContent = profile.name;
+      document.getElementById("detailSubtitle").textContent = `${profile.providerLabel} | ${profile.workspace}`;
+      const status = document.getElementById("detailStatus");
+      status.className = `status ${profile.state}`;
+      status.textContent = stateLabels[profile.state];
+
+      const detailGrid = document.getElementById("detailGrid");
+      detailGrid.innerHTML = [
+        ["Selected day", `${day.label} ${day.date}`],
+        ["Day usage", usage > 0 ? `${usage}%` : "No use"],
+        ["5h left", profile.shortLeft],
+        ["5h reset", profile.shortReset],
+        ["Weekly left", profile.weeklyLeft],
+        ["Weekly reset", profile.weeklyReset],
+        ["Reset credits", profile.credits],
+        ["Launch mode", profile.launch]
+      ].map(([label, value]) => `<div class="detail"><label>${label}</label><strong>${value}</strong></div>`).join("");
+
+      const events = document.getElementById("eventList");
+      events.innerHTML = profile.events.map((event, index) => `
+        <article class="event">
+          <div class="event-top"><span>${event[0]}</span><span>${index === 0 ? "Latest" : "Logged"}</span></div>
+          <p>${event[1]}</p>
+        </article>
+      `).join("");
+    }
+
+    function setProvider(provider) {
+      selectedProvider = provider;
+      const rows = visibleProfiles();
+      if (!rows.some((item) => item.id === selectedProfile) && rows.length) {
+        selectedProfile = rows[0].id;
+      }
+      render();
+    }
+
+    function renderProviderButtons() {
+      document.querySelectorAll("[data-provider]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.provider === selectedProvider);
+      });
+    }
+
+    function render() {
+      renderProviderButtons();
+      renderGrid();
+      renderDetails();
+    }
+
+    document.querySelectorAll("[data-provider]").forEach((button) => {
+      button.addEventListener("click", () => setProvider(button.dataset.provider));
+    });
+
+    document.querySelectorAll("[data-range]").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("[data-range]").forEach((item) => item.classList.toggle("active", item === button));
+        currentRange = button.dataset.range;
+        days = ranges[currentRange];
+        if (!days.some((day) => day.key === selectedDay)) {
+          selectedDay = days[days.length - 1].key;
+        }
+        renderHead();
+        render();
+      });
+    });
+
+    document.getElementById("searchBox").addEventListener("input", (event) => {
+      query = event.target.value.trim().toLowerCase();
+      const rows = visibleProfiles();
+      if (!rows.some((item) => item.id === selectedProfile) && rows.length) {
+        selectedProfile = rows[0].id;
+      }
+      render();
+    });
+
+    renderHead();
+    render();
+  </script>
+</body>
+</html>

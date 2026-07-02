@@ -1,0 +1,10 @@
+[
+  {
+    "tool_name": "ExitPlanMode",
+    "input": {
+      "plan": "# Plan: Inspect Nothing\n\n## Context\nUser asked for a demonstration of plan mode: enter, create a minimal plan, exit immediately.\n\n## Steps\n1. (done) Enter plan mode\n2. (done) Write this plan\n3. Exit plan mode\n",
+      "planFilePath": "C:\\Users\\batty\\.claude\\plans\\calm-foraging-melody.md"
+    },
+    "tool_use_id": "toolu_01A9irCDJUiKXzaq5hp4X87L"
+  }
+]

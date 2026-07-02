@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+
+# Full reference clone of pingdotgg/t3code with its own git history and
+# node_modules-scale assets (~244MB) — kept locally for research only.
+work/t3code-audit/

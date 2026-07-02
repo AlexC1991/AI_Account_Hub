@@ -1,0 +1,1180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Account Hub - Calendar Prototype</title>
+  <style>
+    :root {
+      --ink: #17211c;
+      --muted: #647269;
+      --line: #d8e0da;
+      --line-strong: #b8c7bf;
+      --bg: #edf2ef;
+      --panel: #ffffff;
+      --green: #2b7c4b;
+      --green-soft: #e0f3e7;
+      --red: #b42318;
+      --red-soft: #ffe5e3;
+      --amber: #9a5d00;
+      --amber-soft: #fff0cd;
+      --blue: #236f95;
+      --blue-soft: #e2f1f7;
+      --brown: #8a4e2e;
+      --dark: #1c2922;
+      --shadow: 0 18px 54px rgba(26, 37, 31, 0.16);
+      --radius: 8px;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #dde6e0;
+    }
+
+    button, input {
+      font: inherit;
+    }
+
+    .app {
+      height: 100vh;
+      min-height: 820px;
+      display: grid;
+      grid-template-rows: 56px 1fr;
+      background: var(--bg);
+    }
+
+    .topbar {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.93);
+    }
+
+    .brand {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: #254c37;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      height: 32px;
+      border: 1px solid #c3cec7;
+      border-radius: 7px;
+      background: #fff;
+      color: #1f2d26;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 10px;
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .btn.primary {
+      background: #1f6b49;
+      color: #fff;
+      border-color: #1f6b49;
+    }
+
+    .btn.warning {
+      background: var(--amber-soft);
+      color: #774800;
+      border-color: #e0b35c;
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      border: 1.5px solid currentColor;
+      border-radius: 5px;
+      display: inline-grid;
+      place-items: center;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .layout {
+      min-height: 0;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 310px 1fr 380px;
+    }
+
+    .accounts {
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid var(--line);
+      background: #f8faf8;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .pane-head {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .pane-head h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.2;
+    }
+
+    .pane-head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .search {
+      height: 36px;
+      margin: 12px 14px;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      padding: 0 10px;
+      background: #fff;
+      min-width: 0;
+    }
+
+    .account-list {
+      min-height: 0;
+      overflow: auto;
+      padding: 0 10px 12px;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+    }
+
+    .account {
+      border: 1px solid #e0e8e2;
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 10px;
+      cursor: pointer;
+      display: grid;
+      gap: 9px;
+    }
+
+    .account.active {
+      border-color: #1f6b49;
+      box-shadow: inset 3px 0 0 #1f6b49;
+      background: #f4fbf7;
+    }
+
+    .account-top {
+      display: grid;
+      grid-template-columns: 26px 1fr auto;
+      gap: 9px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .dot {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+
+    .codex { background: #254c37; }
+    .claude { background: #8a4e2e; }
+    .gemini { background: #236f95; }
+    .cursor { background: #242a32; }
+    .api { background: #19706b; }
+
+    .account-title {
+      min-width: 0;
+    }
+
+    .account-title strong {
+      display: block;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .account-title span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .status.ready {
+      color: #11683f;
+      background: var(--green-soft);
+    }
+
+    .status.bad {
+      color: #a61e17;
+      background: var(--red-soft);
+    }
+
+    .status.warn {
+      color: #875000;
+      background: var(--amber-soft);
+    }
+
+    .status.idle {
+      color: #486270;
+      background: var(--blue-soft);
+    }
+
+    .status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .usage-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .meter {
+      height: 8px;
+      border-radius: 999px;
+      background: #e8eee9;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .meter span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+    }
+
+    .meter.warn span { background: #c8871d; }
+    .meter.bad span { background: var(--red); }
+
+    .calendar-area {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 11px 12px;
+    }
+
+    .metric label {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 21px;
+      line-height: 1.05;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .calendar-toolbar {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .month-title {
+      min-width: 0;
+    }
+
+    .month-title h1 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    .month-title p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .segmented {
+      display: inline-flex;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      background: #fff;
+      padding: 3px;
+      height: 36px;
+      gap: 3px;
+    }
+
+    .segmented button {
+      border: 0;
+      background: transparent;
+      border-radius: 5px;
+      padding: 0 10px;
+      color: #26362e;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .segmented button.active {
+      background: #1f6b49;
+      color: #fff;
+    }
+
+    .calendar {
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      background: #f8faf8;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .weekday {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      border-right: 1px solid #e2e9e4;
+    }
+
+    .weekday:last-child {
+      border-right: 0;
+    }
+
+    .calendar-grid {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      grid-auto-rows: minmax(116px, 1fr);
+    }
+
+    .day {
+      position: relative;
+      border-right: 1px solid #e2e9e4;
+      border-bottom: 1px solid #e2e9e4;
+      padding: 8px;
+      background: #fff;
+      cursor: pointer;
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 6px;
+    }
+
+    .day:nth-child(7n) {
+      border-right: 0;
+    }
+
+    .day.dim {
+      background: #f7faf8;
+      color: #8b9991;
+    }
+
+    .day.selected {
+      outline: 2px solid #1f6b49;
+      outline-offset: -2px;
+      background: #f3fbf6;
+    }
+
+    .day-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .day-number {
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .day-total {
+      color: var(--muted);
+      font-size: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .day-events {
+      min-width: 0;
+      display: grid;
+      align-content: start;
+      gap: 4px;
+    }
+
+    .event-pill {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 18px 1fr auto;
+      align-items: center;
+      gap: 5px;
+      height: 23px;
+      padding: 0 5px;
+      border: 1px solid #dce5df;
+      border-radius: 6px;
+      background: #fbfdfb;
+      font-size: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .event-pill strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .event-pill span:last-child {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .mini-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 8px;
+      font-weight: 800;
+    }
+
+    .reset-line {
+      height: 20px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: #1f6b49;
+      font-size: 10px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .reset-line::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #1f6b49;
+      box-shadow: 0 0 0 3px rgba(31, 107, 73, 0.12);
+      flex: 0 0 auto;
+    }
+
+    .details {
+      min-height: 0;
+      min-width: 0;
+      border-left: 1px solid var(--line);
+      background: #fbfcfb;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+    }
+
+    .detail-section {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .detail-title {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .detail-title h2 {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .detail-title p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .detail {
+      min-width: 0;
+      border: 1px solid #e2e9e4;
+      border-radius: 7px;
+      background: #fff;
+      padding: 9px;
+    }
+
+    .detail label {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .detail strong {
+      display: block;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .breakdown {
+      min-height: 0;
+      overflow: auto;
+      padding: 12px 14px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+    }
+
+    .breakdown-card {
+      border: 1px solid #e2e9e4;
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .breakdown-top {
+      display: grid;
+      grid-template-columns: 26px 1fr auto;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .hour-row {
+      display: grid;
+      grid-template-columns: 48px 1fr 70px;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      background: #e8eee9;
+      overflow: hidden;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+    }
+
+    .bar.medium span { background: #c8871d; }
+    .bar.heavy span { background: var(--red); }
+    .bar.blue span { background: var(--blue); }
+
+    .detail-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px 14px;
+      background: #fff;
+    }
+
+    @media (max-width: 1280px) {
+      .layout {
+        grid-template-columns: 290px 1fr;
+      }
+      .details {
+        display: none;
+      }
+      .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        height: auto;
+      }
+      .topbar {
+        height: auto;
+        padding: 12px;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      .accounts {
+        max-height: 420px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .calendar-toolbar {
+        grid-template-columns: 1fr;
+      }
+      .calendar-grid {
+        grid-auto-rows: minmax(132px, auto);
+      }
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">AH</div>
+        <div>
+          <strong>AI Account Hub Calendar</strong>
+          <span>Account readiness, daily usage, reset dates, tokens, and active time</span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn"><span class="icon">R</span>Refresh Usage</button>
+        <button class="btn warning"><span class="icon">T</span>Manual Timer</button>
+        <button class="btn primary"><span class="icon">S</span>Switch Selected</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="accounts">
+        <div class="pane-head">
+          <h2>Profiles</h2>
+          <p>Current 5h availability and account state.</p>
+        </div>
+        <input id="searchBox" class="search" type="search" placeholder="Search accounts or providers" />
+        <div id="accountList" class="account-list"></div>
+      </aside>
+
+      <main class="calendar-area">
+        <section class="summary-grid">
+          <div class="metric"><label>Selected day tokens</label><strong id="metricTokens">0</strong><small id="metricTokenSub">No usage selected</small></div>
+          <div class="metric"><label>Active time</label><strong id="metricTime">0m</strong><small>Hourly + minute estimate</small></div>
+          <div class="metric"><label>Accounts used</label><strong id="metricAccounts">0</strong><small>Visible in calendar cell</small></div>
+          <div class="metric"><label>Next reset</label><strong id="metricReset">-</strong><small id="metricResetSub">No reset on selected day</small></div>
+        </section>
+
+        <section class="calendar-toolbar">
+          <div class="month-title">
+            <h1 id="calendarTitle">July 2026</h1>
+            <p id="calendarSubtitle">Daily account usage and weekly reset markers.</p>
+          </div>
+          <div class="segmented">
+            <button class="active" data-mode="month">Month</button>
+            <button data-mode="week">Week</button>
+          </div>
+          <div class="segmented">
+            <button data-filter="all" class="active">All</button>
+            <button data-filter="codex">Codex</button>
+            <button data-filter="other">Other</button>
+          </div>
+        </section>
+
+        <section class="calendar">
+          <div class="weekdays" id="weekdays"></div>
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </section>
+      </main>
+
+      <aside class="details">
+        <section class="detail-section">
+          <div class="detail-title">
+            <div>
+              <h2 id="detailTitle">Select a day</h2>
+              <p id="detailSubtitle">Usage details appear here.</p>
+            </div>
+            <span id="detailStatus" class="status ready">Ready</span>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <div id="detailGrid" class="detail-grid"></div>
+        </section>
+
+        <section id="breakdown" class="breakdown"></section>
+
+        <section class="detail-actions">
+          <button class="btn">Open CLI</button>
+          <button class="btn primary">Switch Account</button>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    const providerInitials = {
+      codex: "CX",
+      claude: "CL",
+      gemini: "GM",
+      cursor: "CR",
+      api: "API"
+    };
+
+    const profiles = [
+      { id: "gmail", name: "Gmail Login", provider: "codex", providerLabel: "Codex", state: "ready", fiveHourLeft: 53, fiveHourReset: "0", weeklyReset: "Jul 7, 22:22", weeklyLeft: 93 },
+      { id: "acca", name: "ACCA Login", provider: "codex", providerLabel: "Codex", state: "ready", fiveHourLeft: 33, fiveHourReset: "0", weeklyReset: "Jul 1, 10:00", weeklyLeft: 73 },
+      { id: "proton", name: "Proton Work", provider: "codex", providerLabel: "Codex", state: "bad", fiveHourLeft: 0, fiveHourReset: "31m", weeklyReset: "Jul 5, 10:00", weeklyLeft: 82 },
+      { id: "claude-work", name: "Claude Work", provider: "claude", providerLabel: "Claude", state: "ready", fiveHourLeft: 100, fiveHourReset: "-", weeklyReset: "Ready", weeklyLeft: 68 },
+      { id: "gemini-lab", name: "Gemini Lab", provider: "gemini", providerLabel: "Gemini", state: "warn", fiveHourLeft: 0, fiveHourReset: "-", weeklyReset: "-", weeklyLeft: 0 },
+      { id: "cursor-pro", name: "Cursor Pro", provider: "cursor", providerLabel: "Cursor", state: "idle", fiveHourLeft: 100, fiveHourReset: "-", weeklyReset: "-", weeklyLeft: 100 }
+    ];
+
+    const usage = {
+      "2026-06-28": [
+        { profile: "gmail", tokens: 59139182, active: 172, hourly: [24, 18, 45, 35, 50], note: "Heavy Codex session work" },
+        { profile: "acca", tokens: 59375926, active: 139, hourly: [20, 34, 17, 42, 26], note: "Feature build + tests" },
+        { profile: "proton", tokens: 78664818, active: 211, hourly: [48, 39, 52, 41, 31], note: "Long debug turn" }
+      ],
+      "2026-06-29": [
+        { profile: "gmail", tokens: 71433171, active: 188, hourly: [30, 40, 35, 58, 25], note: "Multi-file work" },
+        { profile: "acca", tokens: 23030630, active: 67, hourly: [12, 14, 19, 22], note: "Short review flow" },
+        { profile: "cursor-pro", tokens: 8120000, active: 24, hourly: [8, 10, 6], note: "Cursor agent trial" }
+      ],
+      "2026-06-30": [
+        { profile: "gmail", tokens: 36128510, active: 96, hourly: [18, 24, 21, 33], note: "Account hub changes" },
+        { profile: "acca", tokens: 34507480, active: 83, hourly: [15, 18, 28, 22], note: "Launcher testing" },
+        { profile: "proton", tokens: 0, active: 0, hourly: [], note: "Not Ready: 5h exhausted" }
+      ],
+      "2026-07-01": [
+        { profile: "acca", tokens: 1200000, active: 11, hourly: [11], note: "Estimated weekly recovery day" },
+        { profile: "claude-work", tokens: 14800000, active: 42, hourly: [10, 9, 15, 8], note: "Claude CLI planning" }
+      ],
+      "2026-07-02": [
+        { profile: "claude-work", tokens: 18100000, active: 54, hourly: [16, 12, 13, 13], note: "Document analysis" },
+        { profile: "api-fallback", tokens: 6200000, active: 18, hourly: [6, 5, 7], note: "API fallback job" }
+      ],
+      "2026-07-05": [
+        { profile: "proton", tokens: 0, active: 0, hourly: [], note: "Estimated weekly recovery marker" }
+      ],
+      "2026-07-07": [
+        { profile: "gmail", tokens: 0, active: 0, hourly: [], note: "API weekly reset marker" }
+      ]
+    };
+
+    const resetMarkers = {
+      "2026-07-01": ["ACCA weekly estimate"],
+      "2026-07-05": ["Proton weekly estimate"],
+      "2026-07-07": ["Gmail API reset"]
+    };
+
+    const monthDays = buildMonthDays(2026, 6);
+    const weekDays = monthDays.filter(day => day.iso >= "2026-06-28" && day.iso <= "2026-07-04");
+
+    let selectedProfile = "all";
+    let selectedDate = "2026-06-30";
+    let search = "";
+    let mode = "month";
+    let filter = "all";
+
+    function buildMonthDays(year, monthIndex) {
+      const first = new Date(Date.UTC(year, monthIndex, 1));
+      const start = new Date(first);
+      start.setUTCDate(first.getUTCDate() - first.getUTCDay());
+      const days = [];
+      for (let index = 0; index < 42; index++) {
+        const date = new Date(start);
+        date.setUTCDate(start.getUTCDate() + index);
+        days.push({
+          iso: date.toISOString().slice(0, 10),
+          number: date.getUTCDate(),
+          inMonth: date.getUTCMonth() === monthIndex
+        });
+      }
+      return days;
+    }
+
+    function compactNumber(value) {
+      if (value >= 1000000) return `${(value / 1000000).toFixed(value >= 10000000 ? 0 : 1)}M`;
+      if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+      return `${value}`;
+    }
+
+    function formatTime(minutes) {
+      if (!minutes) return "0m";
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      if (hours > 0) return `${hours}h ${String(mins).padStart(2, "0")}m`;
+      return `${mins}m`;
+    }
+
+    function statusLabel(state) {
+      if (state === "ready") return "Ready";
+      if (state === "bad") return "Not Ready";
+      if (state === "warn") return "Login";
+      return "Idle";
+    }
+
+    function visibleProfiles() {
+      return profiles.filter(profile => {
+        if (filter === "codex" && profile.provider !== "codex") return false;
+        if (filter === "other" && profile.provider === "codex") return false;
+        if (search) {
+          const haystack = `${profile.name} ${profile.providerLabel}`.toLowerCase();
+          if (!haystack.includes(search)) return false;
+        }
+        return true;
+      });
+    }
+
+    function dayEntries(iso) {
+      const allowed = new Set(visibleProfiles().map(profile => profile.id));
+      return (usage[iso] || []).filter(entry => {
+        if (!allowed.has(entry.profile)) return false;
+        if (selectedProfile !== "all" && entry.profile !== selectedProfile) return false;
+        return true;
+      });
+    }
+
+    function profileById(id) {
+      return profiles.find(profile => profile.id === id);
+    }
+
+    function renderAccounts() {
+      const list = document.getElementById("accountList");
+      const rows = visibleProfiles();
+      list.innerHTML = "";
+
+      const all = document.createElement("button");
+      all.type = "button";
+      all.className = `account ${selectedProfile === "all" ? "active" : ""}`;
+      all.innerHTML = `
+        <div class="account-top">
+          <span class="dot api">ALL</span>
+          <span class="account-title"><strong>All visible accounts</strong><span>Calendar overlay</span></span>
+          <span class="status ready">Ready</span>
+        </div>
+        <div class="usage-row"><span class="meter"><span style="width: 72%"></span></span><strong>Mixed</strong></div>
+      `;
+      all.addEventListener("click", () => {
+        selectedProfile = "all";
+        render();
+      });
+      list.appendChild(all);
+
+      rows.forEach(profile => {
+        const account = document.createElement("button");
+        account.type = "button";
+        account.className = `account ${selectedProfile === profile.id ? "active" : ""}`;
+        const meterClass = profile.fiveHourLeft === 0 ? "bad" : profile.fiveHourLeft < 35 ? "warn" : "";
+        account.innerHTML = `
+          <div class="account-top">
+            <span class="dot ${profile.provider}">${providerInitials[profile.provider]}</span>
+            <span class="account-title"><strong>${profile.name}</strong><span>${profile.providerLabel} | Weekly ${profile.weeklyLeft}% left</span></span>
+            <span class="status ${profile.state}">${statusLabel(profile.state)}</span>
+          </div>
+          <div class="usage-row">
+            <span class="meter ${meterClass}"><span style="width:${profile.fiveHourLeft}%"></span></span>
+            <strong>${profile.state === "bad" ? "0%" : profile.fiveHourLeft + "%"}</strong>
+          </div>
+        `;
+        account.addEventListener("click", () => {
+          selectedProfile = profile.id;
+          render();
+        });
+        list.appendChild(account);
+      });
+    }
+
+    function renderWeekdays() {
+      const weekdays = document.getElementById("weekdays");
+      weekdays.innerHTML = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => `<div class="weekday">${day}</div>`).join("");
+    }
+
+    function renderCalendar() {
+      const grid = document.getElementById("calendarGrid");
+      const days = mode === "week" ? weekDays : monthDays;
+      grid.innerHTML = "";
+      grid.style.gridAutoRows = mode === "week" ? "minmax(450px, 1fr)" : "minmax(116px, 1fr)";
+
+      days.forEach(day => {
+        const entries = dayEntries(day.iso);
+        const totalTokens = entries.reduce((sum, entry) => sum + entry.tokens, 0);
+        const totalActive = entries.reduce((sum, entry) => sum + entry.active, 0);
+        const markers = resetMarkers[day.iso] || [];
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = `day ${day.inMonth ? "" : "dim"} ${selectedDate === day.iso ? "selected" : ""}`;
+        cell.innerHTML = `
+          <div class="day-head">
+            <span class="day-number">${day.number}</span>
+            <span class="day-total">${totalTokens ? compactNumber(totalTokens) + " tok" : ""}</span>
+          </div>
+          <div class="day-events">
+            ${entries.slice(0, mode === "week" ? 8 : 3).map(entry => {
+              const profile = profileById(entry.profile);
+              return `
+                <span class="event-pill">
+                  <span class="mini-dot ${profile.provider}">${providerInitials[profile.provider]}</span>
+                  <strong>${profile.name}</strong>
+                  <span>${formatTime(entry.active)}</span>
+                </span>
+              `;
+            }).join("")}
+          </div>
+          <div>
+            ${markers.map(marker => `<div class="reset-line">${marker}</div>`).join("")}
+            ${totalActive && !markers.length ? `<div class="reset-line" style="color:#647269;">${formatTime(totalActive)} active</div>` : ""}
+          </div>
+        `;
+        cell.addEventListener("click", () => {
+          selectedDate = day.iso;
+          render();
+        });
+        grid.appendChild(cell);
+      });
+    }
+
+    function renderDetails() {
+      const entries = dayEntries(selectedDate);
+      const totalTokens = entries.reduce((sum, entry) => sum + entry.tokens, 0);
+      const totalActive = entries.reduce((sum, entry) => sum + entry.active, 0);
+      const markers = resetMarkers[selectedDate] || [];
+      const date = new Date(`${selectedDate}T00:00:00Z`);
+      const dateText = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(date);
+
+      document.getElementById("metricTokens").textContent = compactNumber(totalTokens);
+      document.getElementById("metricTokenSub").textContent = selectedProfile === "all" ? "All visible accounts" : profileById(selectedProfile).name;
+      document.getElementById("metricTime").textContent = formatTime(totalActive);
+      document.getElementById("metricAccounts").textContent = new Set(entries.map(entry => entry.profile)).size;
+      document.getElementById("metricReset").textContent = markers.length ? markers[0].replace(" weekly estimate", "").replace(" API reset", "") : "-";
+      document.getElementById("metricResetSub").textContent = markers.length ? "Reset marker on selected day" : "No reset on selected day";
+
+      document.getElementById("detailTitle").textContent = dateText;
+      document.getElementById("detailSubtitle").textContent = `${selectedDate} | ${entries.length} usage record${entries.length === 1 ? "" : "s"}`;
+      const status = document.getElementById("detailStatus");
+      status.className = `status ${entries.length ? "ready" : "idle"}`;
+      status.textContent = entries.length ? "Used" : "Quiet";
+
+      document.getElementById("detailGrid").innerHTML = [
+        ["Tokens", compactNumber(totalTokens)],
+        ["Active time", formatTime(totalActive)],
+        ["Accounts used", `${new Set(entries.map(entry => entry.profile)).size}`],
+        ["Reset events", `${markers.length}`]
+      ].map(([label, value]) => `<div class="detail"><label>${label}</label><strong>${value}</strong></div>`).join("");
+
+      const breakdown = document.getElementById("breakdown");
+      if (!entries.length && !markers.length) {
+        breakdown.innerHTML = `<article class="breakdown-card"><strong>No usage recorded</strong><span style="color:var(--muted);font-size:12px;">This day has no fake usage records for the current filter.</span></article>`;
+        return;
+      }
+
+      const markerCards = markers.map(marker => `
+        <article class="breakdown-card">
+          <div class="breakdown-top">
+            <span class="dot api">R</span>
+            <span class="account-title"><strong>${marker}</strong><span>Calendar reset marker</span></span>
+            <span class="status ready">Reset</span>
+          </div>
+        </article>
+      `).join("");
+
+      const usageCards = entries.map(entry => {
+        const profile = profileById(entry.profile);
+        const rows = entry.hourly.length ? entry.hourly.map((minutes, index) => {
+          const width = Math.min(100, Math.max(5, minutes * 2));
+          const barClass = minutes >= 45 ? "heavy" : minutes >= 25 ? "medium" : profile.provider === "claude" ? "blue" : "";
+          return `
+            <div class="hour-row">
+              <span>${9 + index}:00</span>
+              <span class="bar ${barClass}"><span style="width:${width}%"></span></span>
+              <strong>${minutes}m</strong>
+            </div>
+          `;
+        }).join("") : `<div class="hour-row"><span>-</span><span class="bar"><span style="width:0%"></span></span><strong>0m</strong></div>`;
+
+        return `
+          <article class="breakdown-card">
+            <div class="breakdown-top">
+              <span class="dot ${profile.provider}">${providerInitials[profile.provider]}</span>
+              <span class="account-title"><strong>${profile.name}</strong><span>${entry.note}</span></span>
+              <span class="status ${profile.state}">${statusLabel(profile.state)}</span>
+            </div>
+            <div class="detail-grid">
+              <div class="detail"><label>Tokens</label><strong>${compactNumber(entry.tokens)}</strong></div>
+              <div class="detail"><label>Active</label><strong>${formatTime(entry.active)}</strong></div>
+            </div>
+            ${rows}
+          </article>
+        `;
+      }).join("");
+
+      breakdown.innerHTML = markerCards + usageCards;
+    }
+
+    function render() {
+      renderAccounts();
+      renderWeekdays();
+      renderCalendar();
+      renderDetails();
+    }
+
+    document.getElementById("searchBox").addEventListener("input", event => {
+      search = event.target.value.trim().toLowerCase();
+      if (selectedProfile !== "all" && !visibleProfiles().some(profile => profile.id === selectedProfile)) {
+        selectedProfile = "all";
+      }
+      render();
+    });
+
+    document.querySelectorAll("[data-mode]").forEach(button => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("[data-mode]").forEach(item => item.classList.toggle("active", item === button));
+        mode = button.dataset.mode;
+        document.getElementById("calendarTitle").textContent = mode === "week" ? "Week of June 28, 2026" : "July 2026";
+        document.getElementById("calendarSubtitle").textContent = mode === "week" ? "Expanded day cells show more account entries." : "Daily account usage and weekly reset markers.";
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-filter]").forEach(button => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("[data-filter]").forEach(item => item.classList.toggle("active", item === button));
+        filter = button.dataset.filter;
+        if (selectedProfile !== "all" && !visibleProfiles().some(profile => profile.id === selectedProfile)) {
+          selectedProfile = "all";
+        }
+        render();
+      });
+    });
+
+    render();
+  </script>
+</body>
+</html>
