@@ -2606,6 +2606,11 @@ def set_profile_limits_from_result(profile: dict, result: dict) -> None:
     profile["weeklyResetEstimateSource"] = source
 
 
+from coding_transport_bridge import CodingTransportBridge, configure_helpers as _configure_transport_bridge_helpers  # noqa: E402
+
+_configure_transport_bridge_helpers(globals())
+
+
 class ScrollFrame(tk.Frame):
     def __init__(self, master: tk.Misc, bg: str = PANEL_ALT, auto_hide: bool = False, **kwargs) -> None:
         super().__init__(master, bg=bg, **kwargs)
@@ -2790,6 +2795,8 @@ class AccountCalendarApp(tk.Tk):
         self._search_trace_registered = False
         self._sort_trace_registered = False
         self._card_template_trace_registered = False
+
+        self.transport_bridge = CodingTransportBridge(self)
 
         self._setup_style()
         self._build()
@@ -4646,622 +4653,70 @@ class AccountCalendarApp(tk.Tk):
         self.refresh_native_models(force=True)
 
     def prepare_native_thread(self) -> None:
-        profile = self.coding_selected_profile()
-        if profile is None:
-            messagebox.showinfo("Select harness account", "Add or select a provider account first.", parent=self)
-            return
-        if self.native_busy:
-            return
-        provider = provider_key(profile)
-        workspace = Path(self.coding_workspace_var.get() or profile.get("workspace") or DEFAULT_WORKSPACE)
-        workspace.mkdir(parents=True, exist_ok=True)
-        controls = self.coding_control_values()
-        access = codex_access_parameters(controls["access"], workspace)
-
-        if provider == "cursor" and not self.cursor_agent_path:
-            self._append_native_message(
-                "error",
-                "Cursor Desktop is installed, but Cursor Agent CLI is not. Opened the native Cursor project instead.",
-            )
-            self.open_cursor_desktop(profile)
-            self.coding_session_active = False
-            self._render_coding()
-            return
-        if provider == "antigravity" and (
-            not self.antigravity_cli_path or Path(self.antigravity_cli_path).name.lower() == "agy-node.cmd"
-        ):
-            self._append_native_message(
-                "activity",
-                "This Antigravity install exposes no healthy structured CLI. Opened the native Antigravity desktop fallback.",
-            )
-            self.open_antigravity_desktop(profile)
-            self.coding_session_active = False
-            self._render_coding()
-            return
-
-        saved_ref = self._saved_native_thread_ref(profile, workspace)
-        saved_session_id = str(saved_ref.get("nativeSessionId") or "") if saved_ref else ""
-        self.close_native_transport()
-        self.native_generation += 1
-        generation = self.native_generation
-        self.native_messages = []
-        self.native_attachments = []
-        self.native_busy = True
-        self.coding_session_active = False
-        self.coding_composer_status.configure(text=f"Connecting {provider_label(profile)}")
-        self._render_coding()
-
-        def worker() -> tuple[CodexTransport | StreamJsonTransport, str, dict]:
-            transport = self._create_native_transport(
-                profile,
-                workspace,
-                session_id="" if provider == "codex" else saved_session_id,
-            )
-            self._track_pending_transport(transport)
-            try:
-                if isinstance(transport, CodexTransport):
-                    initialize = transport.connect()
-                    thread: dict = {}
-                    if saved_session_id:
-                        try:
-                            resumed = transport.resume_thread(saved_session_id, workspace)
-                            thread = resumed.get("thread") if isinstance(resumed.get("thread"), dict) else {}
-                        except Exception:
-                            thread = {}
-                    if not transport.thread_id:
-                        started = transport.start_thread(
-                            workspace,
-                            model=controls["model"],
-                            approval_policy=access["approvalPolicy"],
-                            sandbox=access["threadSandbox"],
-                            personality=controls["personality"],
-                        )
-                        thread = started.get("thread") if isinstance(started.get("thread"), dict) else {}
-                    return transport, transport.thread_id, {"initialize": initialize, "thread": thread}
-                return transport, saved_session_id, {"thread": dict(saved_ref or {})}
-            except Exception:
-                self._stop_transport(transport)
-                self._untrack_pending_transport(transport)
-                raise
-
-        def success(result: tuple[CodexTransport | StreamJsonTransport, str, dict]) -> None:
-            self._untrack_pending_transport(result[0])
-            if generation != self.native_generation:
-                self._stop_transport(result[0])
-                return
-            transport, thread_id, metadata = result
-            self.native_transport = transport
-            self.native_transport_key = self._native_transport_key(profile, workspace)
-            self.native_thread_id = thread_id
-            self.native_turn_id = ""
-            thread = metadata.get("thread") if isinstance(metadata, dict) and isinstance(metadata.get("thread"), dict) else {}
-            self.native_thread_title = clip_text(thread.get("title") or thread.get("preview") or thread.get("thread_name") or "", 90)
-            self.native_busy = False
-            self.coding_session_active = True
-            initialize = metadata.get("initialize") if isinstance(metadata, dict) else {}
-            user_agent = str(initialize.get("userAgent") or "") if isinstance(initialize, dict) else ""
-            self.native_diagnostics = [user_agent] if user_agent else []
-            self.status_var.set(f"{provider_label(profile)} native thread ready.")
-            self._render_coding()
-            self.coding_input.focus_set()
-            if self.coding_context_tab == "skills":
-                self.refresh_native_skills(force=True)
-            pending_command = getattr(self, "_native_pending_command", None)
-            self._native_pending_command = None
-            if pending_command:
-                parsed = pending_command.get("parsed") if isinstance(pending_command, dict) else None
-                queued_attachments = pending_command.get("attachments") if isinstance(pending_command, dict) else []
-                if isinstance(parsed, dict):
-                    self._run_coding_slash_command(parsed, list(queued_attachments or []))
-                    return
-            pending = getattr(self, "_native_pending_send", None)
-            self._native_pending_send = None
-            if pending:
-                self._send_native_now(*pending)
-
-        self._run_native_worker(worker, success, generation)
+        return self.transport_bridge.prepare_native_thread()
 
     def attach_native_files(self) -> None:
-        profile = self.coding_selected_profile()
-        if profile is None:
-            return
-        selected = filedialog.askopenfilenames(parent=self, title=f"Attach files to the next {provider_label(profile)} turn")
-        if not selected:
-            return
-        self._add_native_attachments([Path(path) for path in selected])
+        return self.transport_bridge.attach_native_files()
 
     def send_native_message(self) -> None:
-        if self.native_busy:
-            return
-        text = "" if getattr(self, "coding_input_placeholder_active", False) else self.coding_input.get("1.0", "end-1c")
-        attachments = list(self.native_attachments)
-        if not text.strip() and not attachments:
-            return
-        parsed = parse_coding_slash_command(text)
-        if parsed is not None:
-            self._handle_coding_slash_command(parsed, attachments)
-            return
-        if not self.coding_session_active or self.native_transport is None:
-            self._native_pending_send = (text, attachments, {})
-            self.prepare_native_thread()
-            return
-        self._send_native_now(text, attachments)
+        return self.transport_bridge.send_native_message()
 
     def _send_native_now(self, text: str, attachments: list[Path], turn_options: dict | None = None) -> None:
-        transport = self.native_transport
-        profile = self.coding_selected_profile()
-        if transport is None or profile is None:
-            return
-        turn_options = turn_options if isinstance(turn_options, dict) else {}
-        controls = self.coding_control_values()
-        access = codex_access_parameters(controls["access"], Path(self.coding_workspace_var.get() or DEFAULT_WORKSPACE))
-        if isinstance(transport, StreamJsonTransport):
-            transport.set_options(
-                model=controls["model"],
-                effort=controls["effort"],
-                access_mode=controls["access"],
-            )
-        display_text = text.strip() or "Please review the attached files."
-        transport_text = display_text
-        if isinstance(transport, StreamJsonTransport):
-            transport_text = native_attachment_prompt(display_text, attachments)
-        self.coding_input.delete("1.0", "end")
-        self.coding_input_placeholder_active = False
-        self.native_attachments = []
-        self._render_native_attachments()
-        image_refs = [
-            {"name": path.name, "path": str(path), "url": "", "data": "", "mediaType": ""}
-            for path in attachments
-            if native_attachment_kind(path) == "image"
-        ]
-        self._append_native_message("user", display_text, render=False, imageRefs=image_refs)
-        self.native_busy = True
-        self.coding_composer_status.configure(text=f"{provider_label(profile)} working")
-        self._render_coding()
-
-        def worker() -> object:
-            if isinstance(transport, CodexTransport):
-                return transport.start_turn(
-                    text,
-                    attachments,
-                    model=controls["model"],
-                    effort=controls["effort"],
-                    approval_policy=access["approvalPolicy"],
-                    sandbox_policy=access["sandboxPolicy"],
-                    personality=str(turn_options.get("personality") or controls["personality"]),
-                    collaboration_mode=turn_options.get("collaborationMode") if isinstance(turn_options.get("collaborationMode"), dict) else None,
-                )
-            return transport.send(transport_text)
-
-        def success(result: object) -> None:
-            if isinstance(transport, CodexTransport):
-                turn = result.get("turn") if isinstance(result, dict) and isinstance(result.get("turn"), dict) else {}
-                self.native_turn_id = str(turn.get("id") or transport.turn_id)
-            elif isinstance(result, int) and result != 0 and self.native_busy:
-                self.native_busy = False
-            self._render_coding()
-
-        self._run_native_worker(worker, success, self.native_generation)
+        return self.transport_bridge._send_native_now(text, attachments, turn_options)
 
     def stop_native_turn(self) -> None:
-        transport = self.native_transport
-        if transport is None or not self.native_busy:
-            return
-        self.coding_composer_status.configure(text="Stopping")
-
-        def worker() -> None:
-            if isinstance(transport, CodexTransport):
-                transport.interrupt()
-            else:
-                transport.stop()
-
-        def success(_result: object) -> None:
-            self.native_busy = False
-            self._append_native_message("activity", "Native turn stopped.", render=False)
-            self._render_coding()
-
-        self._run_native_worker(worker, success, self.native_generation)
+        return self.transport_bridge.stop_native_turn()
 
     def close_native_transport(self) -> None:
-        self.native_generation += 1
-        transport = self.native_transport
-        self.native_transport = None
-        self.native_transport_key = ""
-        self.native_thread_id = ""
-        self.native_thread_title = ""
-        self.native_turn_id = ""
-        self.native_busy = False
-        self.coding_session_active = False
-        self.native_messages = []
-        self.native_attachments = []
-        self.native_diagnostics = []
-        self.native_turn_diff = ""
-        self.native_file_changes = []
-        self.native_token_usage = {}
-        self._clear_native_skills_cache()
-        with self.native_transport_lock:
-            pending = list(self.native_pending_transports)
-            self.native_pending_transports.clear()
-        if transport is not None:
-            self._stop_transport(transport)
-        for item in pending:
-            self._stop_transport(item)
+        return self.transport_bridge.close_native_transport()
 
     def _ensure_claude_permission_bridge(self) -> tuple[str, str]:
-        if self.claude_permission_server is not None and self.claude_permission_url:
-            return self.claude_permission_url, self.claude_permission_token
-        token = secrets.token_urlsafe(24)
-        app = self
-
-        class PermissionHandler(http.server.BaseHTTPRequestHandler):
-            protocol_version = "HTTP/1.1"
-
-            def log_message(self, _format: str, *_args) -> None:
-                return
-
-            def _send_json(self, status: int, payload: dict) -> None:
-                body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def do_POST(self) -> None:
-                if self.path != "/permission":
-                    self._send_json(404, {"behavior": "deny", "message": "Unknown AI Account Hub permission endpoint."})
-                    return
-                if self.headers.get("Authorization", "") != f"Bearer {token}":
-                    self._send_json(403, {"behavior": "deny", "message": "Invalid AI Account Hub permission token."})
-                    return
-                try:
-                    size = int(self.headers.get("Content-Length", "0"))
-                except ValueError:
-                    size = 0
-                try:
-                    payload = json.loads(self.rfile.read(size).decode("utf-8", errors="replace"))
-                except json.JSONDecodeError:
-                    self._send_json(400, {"behavior": "deny", "message": "Invalid permission payload."})
-                    return
-                if not isinstance(payload, dict):
-                    self._send_json(400, {"behavior": "deny", "message": "Invalid permission payload."})
-                    return
-                decision = app._handle_claude_permission_payload(payload)
-                self._send_json(200, decision)
-
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), PermissionHandler)
-        thread = threading.Thread(target=server.serve_forever, name="ai-hub-claude-permission", daemon=True)
-        thread.start()
-        self.claude_permission_server = server
-        self.claude_permission_thread = thread
-        self.claude_permission_token = token
-        self.claude_permission_url = f"http://127.0.0.1:{server.server_address[1]}/permission"
-        return self.claude_permission_url, self.claude_permission_token
+        return self.transport_bridge._ensure_claude_permission_bridge()
 
     def _shutdown_claude_permission_bridge(self) -> None:
-        server = self.claude_permission_server
-        self.claude_permission_server = None
-        self.claude_permission_url = ""
-        self.claude_permission_token = ""
-        if server is not None:
-            try:
-                server.shutdown()
-                server.server_close()
-            except OSError:
-                pass
-        thread = self.claude_permission_thread
-        self.claude_permission_thread = None
-        if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=1)
+        return self.transport_bridge._shutdown_claude_permission_bridge()
 
     def _handle_claude_permission_payload(self, payload: dict) -> dict:
-        result: dict[str, object] = {}
-        finished = threading.Event()
-
-        def ask() -> None:
-            try:
-                result["value"] = self._ask_claude_permission(payload)
-            except Exception as error:
-                result["value"] = self._claude_permission_deny(payload, f"AI Account Hub permission prompt failed: {error}", interrupt=True)
-            finally:
-                finished.set()
-
-        self._post_native_ui(ask)
-        if not finished.wait(timeout=300):
-            return self._claude_permission_deny(payload, "Timed out waiting for AI Account Hub permission response.", interrupt=True)
-        value = result.get("value")
-        return value if isinstance(value, dict) else self._claude_permission_deny(payload, "Invalid AI Account Hub permission response.", interrupt=True)
+        return self.transport_bridge._handle_claude_permission_payload(payload)
 
     def _claude_permission_allow(self, payload: dict) -> dict:
-        result: dict = {
-            "behavior": "allow",
-            "updatedInput": {},
-            "decisionClassification": "user_temporary",
-        }
-        tool_use_id = str(payload.get("tool_use_id") or "")
-        if tool_use_id:
-            result["toolUseID"] = tool_use_id
-        return result
+        return self.transport_bridge._claude_permission_allow(payload)
 
     def _claude_permission_deny(self, payload: dict, message: str, interrupt: bool = False) -> dict:
-        result: dict = {
-            "behavior": "deny",
-            "message": message,
-            "interrupt": interrupt,
-            "decisionClassification": "user_reject",
-        }
-        tool_use_id = str(payload.get("tool_use_id") or "")
-        if tool_use_id:
-            result["toolUseID"] = tool_use_id
-        return result
+        return self.transport_bridge._claude_permission_deny(payload, message, interrupt)
 
     def _claude_permission_summary(self, payload: dict) -> str:
-        tool_name = str(payload.get("tool_name") or "Claude tool")
-        tool_input = payload.get("input") if isinstance(payload.get("input"), dict) else {}
-        command = str(tool_input.get("command") or "").strip()
-        description = str(tool_input.get("description") or "").strip()
-        if command:
-            parts = [f"{tool_name}: {command}"]
-            if description:
-                parts.append(description)
-            return "\n".join(parts)
-        questions = tool_input.get("questions") if isinstance(tool_input.get("questions"), list) else []
-        if questions:
-            first = questions[0] if isinstance(questions[0], dict) else {}
-            question = str(first.get("question") or first.get("header") or "Claude question").strip()
-            return f"{tool_name}: {question}"
-        try:
-            raw = json.dumps(tool_input, ensure_ascii=False, indent=2)
-        except TypeError:
-            raw = str(tool_input)
-        raw = raw.strip()
-        return f"{tool_name}: {clip_text(raw, 420) if raw else 'permission requested'}"
+        return self.transport_bridge._claude_permission_summary(payload)
 
     def _ask_claude_permission(self, payload: dict) -> dict:
-        if str(payload.get("tool_name") or "") == "ExitPlanMode":
-            return self._ask_claude_plan_review(payload)
-        if str(payload.get("tool_name") or "") == "AskUserQuestion":
-            return self._ask_claude_user_question(payload)
-        summary = self._claude_permission_summary(payload)
-        tool_use_id = str(payload.get("tool_use_id") or "claude-permission")
-        self._upsert_native_activity(f"claude-permission-{tool_use_id}", f"Claude permission requested\n{summary}", render=False)
-        self._schedule_native_render(full=False)
-        self.update_idletasks()
-        decision = self._native_request_dialog(
-            "Claude permission request",
-            summary,
-            [
-                ("Allow once", "allow", "Let Claude Code run this native action once."),
-                ("Deny", "deny", "Refuse the action and let Claude continue."),
-                ("Stop turn", "interrupt", "Deny this action and interrupt the active Claude turn."),
-            ],
-            allow_text=False,
-        )
-        if decision == "allow":
-            self._upsert_native_activity(f"claude-permission-{tool_use_id}", f"Claude permission allowed\n{summary}", render=False)
-            return self._claude_permission_allow(payload)
-        interrupt = decision in {None, "interrupt"}
-        self._upsert_native_activity(f"claude-permission-{tool_use_id}", f"Claude permission denied\n{summary}", render=False)
-        return self._claude_permission_deny(payload, "Denied by user in AI Account Hub.", interrupt=interrupt)
+        return self.transport_bridge._ask_claude_permission(payload)
 
     def _ask_claude_user_question(self, payload: dict) -> dict:
-        tool_use_id = str(payload.get("tool_use_id") or "claude-question")
-        tool_input = payload.get("input") if isinstance(payload.get("input"), dict) else {}
-        questions = tool_input.get("questions") if isinstance(tool_input.get("questions"), list) else []
-        if not questions:
-            return self._claude_permission_deny(payload, "Claude asked for input, but no questions were provided.", interrupt=False)
-
-        self._upsert_native_activity(
-            f"claude-question-{tool_use_id}",
-            f"Claude question\n{self._claude_permission_summary(payload)}",
-            render=False,
-        )
-        self._schedule_native_render(full=False)
-        self.update_idletasks()
-
-        answers: dict[str, object] = {}
-        for index, raw_question in enumerate(questions, start=1):
-            if not isinstance(raw_question, dict):
-                continue
-            question_text = str(raw_question.get("question") or raw_question.get("header") or f"Question {index}").strip()
-            header = str(raw_question.get("header") or "Claude question").strip()[:32]
-            options = raw_question.get("options") if isinstance(raw_question.get("options"), list) else []
-            choices: list[tuple[str, str, str]] = []
-            for option in options:
-                if not isinstance(option, dict):
-                    continue
-                label = str(option.get("label") or "").strip()
-                if not label:
-                    continue
-                choices.append((label, label, str(option.get("description") or "")))
-            prompt = question_text
-            if raw_question.get("multiSelect"):
-                prompt = f"{question_text}\n\nSelect one option, or type comma-separated labels/custom text for multiple answers."
-            value = self._native_request_dialog(
-                header or "Claude question",
-                prompt,
-                choices,
-                allow_text=True,
-            )
-            if value is None:
-                self._upsert_native_activity(
-                    f"claude-question-{tool_use_id}",
-                    f"Claude question cancelled\n{question_text}",
-                    render=False,
-                )
-                return self._claude_permission_deny(payload, "User cancelled the Claude question in AI Account Hub.", interrupt=False)
-            value = str(value).strip()
-            if value:
-                if raw_question.get("multiSelect") and "," in value:
-                    answers[question_text] = [part.strip() for part in value.split(",") if part.strip()]
-                else:
-                    answers[question_text] = value
-
-        updated_input = dict(tool_input)
-        updated_input["questions"] = questions
-        updated_input["answers"] = answers
-        result: dict[str, object] = {
-            "behavior": "allow",
-            "updatedInput": updated_input,
-            "decisionClassification": "user_temporary",
-        }
-        if tool_use_id:
-            result["toolUseID"] = tool_use_id
-        answer_summary = "; ".join(f"{key}: {value}" for key, value in answers.items()) or "No answers supplied"
-        self._upsert_native_activity(
-            f"claude-question-{tool_use_id}",
-            f"Claude question answered\n{answer_summary}",
-            render=False,
-        )
-        return result
+        return self.transport_bridge._ask_claude_user_question(payload)
 
     def _ask_claude_plan_review(self, payload: dict) -> dict:
-        tool_use_id = str(payload.get("tool_use_id") or "claude-plan")
-        tool_input = payload.get("input") if isinstance(payload.get("input"), dict) else {}
-        plan = str(tool_input.get("plan") or "").strip()
-        plan_file_path = str(tool_input.get("planFilePath") or "").strip()
-        if not plan:
-            return self._claude_permission_deny(payload, "Claude asked to exit plan mode, but no plan was provided.", interrupt=False)
-
-        self._upsert_native_activity(
-            f"claude-plan-{tool_use_id}",
-            f"Claude plan review requested\n{clip_text(plan, 900)}",
-            render=False,
-        )
-        self._schedule_native_render(full=False)
-        self.update_idletasks()
-
-        reviewed_plan = self._native_plan_review_dialog(plan, plan_file_path)
-        if reviewed_plan is None:
-            self._upsert_native_activity(
-                f"claude-plan-{tool_use_id}",
-                "Claude plan denied",
-                render=False,
-            )
-            return self._claude_permission_deny(payload, "Plan was not approved in AI Account Hub.", interrupt=False)
-
-        updated_input = dict(tool_input)
-        updated_input["plan"] = reviewed_plan
-        if plan_file_path:
-            updated_input["planFilePath"] = plan_file_path
-        result: dict[str, object] = {
-            "behavior": "allow",
-            "updatedInput": updated_input,
-            "decisionClassification": "user_temporary",
-        }
-        if tool_use_id:
-            result["toolUseID"] = tool_use_id
-        changed = reviewed_plan.strip() != plan.strip()
-        label = "Claude plan edited and approved" if changed else "Claude plan approved"
-        self._upsert_native_activity(
-            f"claude-plan-{tool_use_id}",
-            f"{label}\n{clip_text(reviewed_plan, 900)}",
-            render=False,
-        )
-        return result
+        return self.transport_bridge._ask_claude_plan_review(payload)
 
     def _claude_tool_activity_text(self, name: str, tool_input: object) -> str:
-        payload = {"tool_name": name, "input": tool_input if isinstance(tool_input, dict) else {}}
-        summary = self._claude_permission_summary(payload)
-        if name in {"EnterPlanMode", "ExitPlanMode"}:
-            return f"Plan\n{summary}"
-        if name == "AskUserQuestion":
-            return f"Claude question\n{summary}"
-        return summary
+        return self.transport_bridge._claude_tool_activity_text(name, tool_input)
 
     def _codex_activity_fields(self, item: dict) -> dict:
-        item_type = str(item.get("type") or "")
-        fields: dict[str, object] = {
-            "kind": {
-                "commandExecution": "command",
-                "fileChange": "file_change",
-                "mcpToolCall": "tool",
-                "dynamicToolCall": "tool",
-                "collabToolCall": "tool",
-                "webSearch": "tool",
-                "imageView": "image",
-                "contextCompaction": "notice",
-                "plan": "plan",
-            }.get(item_type, "activity"),
-            "title": {
-                "commandExecution": "Command",
-                "fileChange": "File changes",
-                "mcpToolCall": f"MCP {item.get('tool') or 'tool'}",
-                "dynamicToolCall": str(item.get("tool") or "Tool"),
-                "collabToolCall": "Collaboration",
-                "webSearch": "Web search",
-                "imageView": "Image",
-                "contextCompaction": "Context compacted",
-                "plan": "Plan",
-            }.get(item_type, item_type or "Activity"),
-            "status": str(item.get("status") or ""),
-        }
-        if item_type == "fileChange":
-            changes = [change for change in item.get("changes") or [] if isinstance(change, dict)]
-            fields["changes"] = changes
-            diffs = [coding_display_text(change.get("diff") or "") for change in changes if str(change.get("diff") or "").strip()]
-            if diffs:
-                fields["kind"] = "diff"
-                fields["title"] = "File changes"
-                fields["diff"] = "\n".join(diffs)
-        elif item_type == "imageView":
-            path = str(item.get("path") or "").strip()
-            if path:
-                fields["imageRefs"] = [{"name": Path(path).name, "path": path, "url": "", "data": "", "mediaType": ""}]
-        return fields
+        return self.transport_bridge._codex_activity_fields(item)
 
     def _format_claude_rate_limit_event(self, info: dict) -> str:
-        limit_type = str(info.get("rateLimitType") or "limit")
-        utilization = sanitize_float(info.get("utilization"))
-        percent = f"{utilization * 100:.0f}% used" if utilization is not None else "usage not exposed"
-        reset = sanitize_float(info.get("resetsAt"))
-        reset_text = "-"
-        if reset is not None:
-            reset_text = local_datetime_label(dt.datetime.fromtimestamp(reset, dt.timezone.utc).isoformat())
-        status = str(info.get("status") or "event")
-        overage = " | overage" if info.get("isUsingOverage") else ""
-        return f"Claude limit\n{limit_type}: {percent} | {status} | resets {reset_text}{overage}"
+        return self.transport_bridge._format_claude_rate_limit_event(info)
 
     def _apply_claude_rate_limit_event(self, info: dict) -> None:
-        profile = self.coding_selected_profile()
-        if profile is None or provider_key(profile) != "claude":
-            return
-        utilization = sanitize_float(info.get("utilization"))
-        reset = sanitize_float(info.get("resetsAt"))
-        limit_type = str(info.get("rateLimitType") or "").lower()
-        reset_iso = dt.datetime.fromtimestamp(reset, dt.timezone.utc).isoformat().replace("+00:00", "Z") if reset is not None else ""
-        used_percent = "" if utilization is None else str(round(max(0.0, min(1.0, utilization)) * 100, 2))
-        if "seven" in limit_type or "week" in limit_type:
-            profile["weeklyLimitUsedPercent"] = used_percent
-            profile["weeklyLimitResetUtc"] = reset_iso
-            profile["weeklyResetEstimateUtc"] = reset_iso
-            profile["weeklyResetEstimateSource"] = "claude-rate-limit-event" if reset_iso else ""
-        else:
-            profile["shortLimitUsedPercent"] = used_percent
-            profile["shortLimitResetUtc"] = reset_iso
-        profile["lastLimitsRefreshUtc"] = iso_utc_now()
-        profile["lastUsageError"] = ""
-        summary = profile.get("usageSummary") if isinstance(profile.get("usageSummary"), dict) else {}
-        summary["lastRateLimitEvent"] = info
-        profile["usageSummary"] = summary
-        save_profiles(self.profiles)
+        return self.transport_bridge._apply_claude_rate_limit_event(info)
 
     def _track_pending_transport(self, transport: CodexTransport | StreamJsonTransport) -> None:
-        with self.native_transport_lock:
-            self.native_pending_transports.append(transport)
+        return self.transport_bridge._track_pending_transport(transport)
 
     def _untrack_pending_transport(self, transport: CodexTransport | StreamJsonTransport) -> None:
-        with self.native_transport_lock:
-            self.native_pending_transports = [item for item in self.native_pending_transports if item is not transport]
+        return self.transport_bridge._untrack_pending_transport(transport)
 
     def _stop_transport(self, transport: CodexTransport | StreamJsonTransport) -> None:
-        try:
-            if isinstance(transport, CodexTransport):
-                transport.shutdown()
-            else:
-                transport.stop()
-        except Exception:
-            pass
+        return self.transport_bridge._stop_transport(transport)
 
     def close_application(self) -> None:
         self.destroy()
@@ -5288,803 +4743,61 @@ class AccountCalendarApp(tk.Tk):
         super().destroy()
 
     def _create_native_transport(self, profile: dict, workspace: Path, session_id: str = "") -> CodexTransport | StreamJsonTransport:
-        provider = provider_key(profile)
-        controls = self.coding_control_values()
-        if provider == "codex":
-            if not self.codex_cli_path:
-                raise NativeTransportError(self.codex_cli_error or "Codex CLI was not found.")
-            codex_home = Path(str(profile.get("codexHome") or DEFAULT_CODEX_HOME))
-            if not (codex_home / "auth.json").exists():
-                raise NativeTransportError(f"{profile.get('name', 'Account')} is not logged in. Use Accounts > Login first.")
-            return CodexTransport(
-                self.codex_cli_path,
-                codex_home,
-                workspace,
-                self._native_event_callback,
-            )
-        if provider == "claude":
-            if not self.claude_code_path:
-                raise NativeTransportError("Claude Code CLI was not found.")
-            env = os.environ.copy()
-            env["CLAUDE_CONFIG_DIR"] = str(claude_profile_home(profile))
-            permission_url, permission_token = self._ensure_claude_permission_bridge()
-            env["AI_HUB_PERMISSION_URL"] = permission_url
-            env["AI_HUB_PERMISSION_TOKEN"] = permission_token
-            env["AI_HUB_PERMISSION_BRIDGE_PATH"] = str(CLAUDE_PERMISSION_BRIDGE_PATH)
-            env["AI_HUB_PYTHON"] = sys.executable
-            return StreamJsonTransport(
-                "claude",
-                self.claude_code_path,
-                workspace,
-                self._native_event_callback,
-                env=env,
-                session_id=session_id,
-                model=controls["model"],
-                effort=controls["effort"],
-                access_mode=controls["access"],
-            )
-        if provider == "cursor":
-            if not self.cursor_agent_path:
-                raise NativeTransportError("Cursor Agent CLI is not installed.")
-            return StreamJsonTransport(
-                "cursor",
-                self.cursor_agent_path,
-                workspace,
-                self._native_event_callback,
-                session_id=session_id,
-                model=controls["model"],
-                effort=controls["effort"],
-                access_mode=controls["access"],
-            )
-        if provider == "antigravity":
-            if not self.antigravity_cli_path or Path(self.antigravity_cli_path).name.lower() == "agy-node.cmd":
-                raise NativeTransportError("Antigravity CLI is not installed.")
-            return AntigravityTransport(
-                self.antigravity_cli_path,
-                workspace,
-                self._native_event_callback,
-                session_id=session_id,
-                model=controls["model"],
-                access_mode=controls["access"],
-            )
-        raise NativeTransportError(f"{provider_label(profile)} has no structured transport on this installation.")
+        return self.transport_bridge._create_native_transport(profile, workspace, session_id)
 
     def _native_transport_key(self, profile: dict, workspace: Path) -> str:
-        return f"{provider_key(profile)}|{profile_id(profile)}|{str(workspace).lower()}"
+        return self.transport_bridge._native_transport_key(profile, workspace)
 
     def _thread_updated_at(self, item: dict) -> float:
-        value = item.get("updatedAt") or item.get("updated_at") or 0
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return self._timestamp_from_iso(value)
+        return self.transport_bridge._thread_updated_at(item)
 
     def _thread_workspace_key(self, item: dict, fallback: object = "") -> str:
-        return normalized_path_key(
-            item.get("cwd")
-            or item.get("actualCwd")
-            or item.get("projectPath")
-            or fallback
-        )
+        return self.transport_bridge._thread_workspace_key(item, fallback)
 
     def _saved_native_thread_ref(self, profile: dict, workspace: Path) -> dict | None:
-        provider = provider_key(profile)
-        pid = profile_id(profile)
-        workspace_key = normalized_path_key(workspace)
-        refs = [
-            ref
-            for ref in load_thread_refs(NATIVE_THREADS_FILE)
-            if str(ref.get("provider") or "") == provider
-            and str(ref.get("profileId") or "") == pid
-            and str(ref.get("nativeSessionId") or "")
-            and self._thread_workspace_key(ref) == workspace_key
-        ]
-        if not refs:
-            return None
-        return max(refs, key=self._thread_updated_at)
+        return self.transport_bridge._saved_native_thread_ref(profile, workspace)
 
     def _merge_saved_thread_refs(self, threads: list[dict], profile: dict) -> list[dict]:
-        provider = provider_key(profile)
-        pid = profile_id(profile)
-        merged = list(threads)
-        seen = {str(thread.get("id") or "") for thread in merged}
-        for ref in load_thread_refs(NATIVE_THREADS_FILE):
-            session_id = str(ref.get("nativeSessionId") or "")
-            if not session_id or session_id in seen:
-                continue
-            if str(ref.get("provider") or "") != provider or str(ref.get("profileId") or "") != pid:
-                continue
-            merged.append(
-                {
-                    "id": session_id,
-                    "provider": provider,
-                    "preview": str(ref.get("title") or f"{provider_label(profile)} session"),
-                    "cwd": str(ref.get("projectPath") or ""),
-                    "createdAt": 0,
-                    "updatedAt": self._timestamp_from_iso(ref.get("updatedAt")),
-                    "path": "",
-                    "status": {"type": "notLoaded"},
-                }
-            )
-            seen.add(session_id)
-        return merged
+        return self.transport_bridge._merge_saved_thread_refs(threads, profile)
 
     def _collapse_native_threads(self, threads: list[dict], profile: dict) -> list[dict]:
-        provider = provider_key(profile)
-        pid = profile_id(profile)
-        preferred: dict[str, str] = {}
-        for ref in sorted(load_thread_refs(NATIVE_THREADS_FILE), key=self._thread_updated_at, reverse=True):
-            if str(ref.get("provider") or "") != provider or str(ref.get("profileId") or "") != pid:
-                continue
-            key = self._thread_workspace_key(ref)
-            session_id = str(ref.get("nativeSessionId") or "")
-            if key and session_id and key not in preferred:
-                preferred[key] = session_id
-
-        grouped: dict[str, list[dict]] = {}
-        for thread in threads:
-            if not isinstance(thread, dict):
-                continue
-            item = dict(thread)
-            item.setdefault("provider", provider)
-            key = self._thread_workspace_key(item)
-            if not key:
-                key = f"session:{item.get('id') or len(grouped)}"
-            grouped.setdefault(key, []).append(item)
-
-        collapsed: list[dict] = []
-        for key, items in grouped.items():
-            chosen = None
-            if self.native_thread_id:
-                chosen = next((item for item in items if str(item.get("id") or "") == self.native_thread_id), None)
-            preferred_session = preferred.get(key)
-            if chosen is None and preferred_session:
-                chosen = next((item for item in items if str(item.get("id") or "") == preferred_session), None)
-            if chosen is None:
-                chosen = max(items, key=self._thread_updated_at)
-            collapsed.append(chosen)
-        return sorted(collapsed, key=self._thread_updated_at, reverse=True)
+        return self.transport_bridge._collapse_native_threads(threads, profile)
 
     def _run_native_worker(self, worker, success, generation: int) -> None:
-        def run() -> None:
-            try:
-                result = worker()
-            except Exception as error:
-                self._post_native_ui(lambda value=str(error): self._native_worker_failed(value, generation))
-                return
-            self._post_native_ui(lambda value=result: success(value))
-
-        threading.Thread(target=run, name="ai-hub-native-worker", daemon=True).start()
+        return self.transport_bridge._run_native_worker(worker, success, generation)
 
     def _native_worker_failed(self, error: str, generation: int) -> None:
-        if generation != self.native_generation:
-            return
-        self.native_busy = False
-        self.coding_session_active = False if self.native_transport is None else self.coding_session_active
-        self._append_native_message("error", error, render=False)
-        self.status_var.set(error)
-        self._render_coding()
+        return self.transport_bridge._native_worker_failed(error, generation)
 
     def refresh_native_threads(self) -> None:
-        if self.native_loading_threads or self.native_busy:
-            return
-        with self.native_transport_lock:
-            if self.native_pending_transports:
-                return
-        profile = self.coding_selected_profile()
-        if profile is None:
-            self.native_threads = []
-            self._render_coding_projects()
-            return
-        workspace = Path(self.coding_workspace_var.get() or profile.get("workspace") or DEFAULT_WORKSPACE)
-        provider = provider_key(profile)
-        expected_profile = profile_id(profile)
-        expected_workspace = normalized_path_key(workspace)
-        self.native_loading_threads = True
-        self._render_coding_projects()
-
-        def worker() -> list[dict]:
-            if provider == "codex":
-                codex_home = Path(str(profile.get("codexHome") or DEFAULT_CODEX_HOME))
-
-                def file_threads() -> list[dict]:
-                    return discover_codex_file_threads(codex_home, workspace, limit=100)
-
-                try:
-                    reusable = (
-                        isinstance(self.native_transport, CodexTransport)
-                        and self.native_transport_key == self._native_transport_key(profile, workspace)
-                        and self.native_transport.alive
-                    )
-                    transport = self.native_transport if reusable else self._create_native_transport(profile, workspace)
-                    assert isinstance(transport, CodexTransport)
-                    if not reusable:
-                        self._track_pending_transport(transport)
-                    try:
-                        if not reusable:
-                            transport.connect()
-                        threads = transport.list_threads(workspace, limit=100)
-                    finally:
-                        if not reusable:
-                            transport.shutdown()
-                            self._untrack_pending_transport(transport)
-                except Exception:
-                    fallback = file_threads()
-                    if fallback:
-                        return fallback
-                    raise
-                for thread in threads:
-                    thread["provider"] = "codex"
-                    thread.setdefault("cwd", str(workspace))
-                merged = list(threads)
-                seen = {str(thread.get("id") or "") for thread in merged}
-                for thread in file_threads():
-                    thread_id = str(thread.get("id") or "")
-                    if thread_id and thread_id in seen:
-                        continue
-                    merged.append(thread)
-                    if thread_id:
-                        seen.add(thread_id)
-
-                def sort_value(item: dict) -> float:
-                    value = item.get("updatedAt") or item.get("updated_at") or 0
-                    try:
-                        return float(value)
-                    except (TypeError, ValueError):
-                        return self._timestamp_from_iso(value)
-
-                return sorted(merged, key=sort_value, reverse=True)[:100]
-            if provider == "claude":
-                roots = [claude_profile_home(profile) / "projects"]
-                default_root = CLAUDE_CLI_HOME / "projects"
-                if not any(same_local_path(root, default_root) for root in roots):
-                    roots.append(default_root)
-                discovered: list[dict] = []
-                seen_paths: set[str] = set()
-                for root in roots:
-                    for thread in discover_claude_threads(root, workspace, limit=100):
-                        path_key = str(thread.get("path") or thread.get("id") or "").lower()
-                        if not path_key or path_key in seen_paths:
-                            continue
-                        seen_paths.add(path_key)
-                        discovered.append(thread)
-                if not discovered:
-                    for root in roots:
-                        for thread in discover_claude_threads(root, None, limit=100):
-                            path_key = str(thread.get("path") or thread.get("id") or "").lower()
-                            if not path_key or path_key in seen_paths:
-                                continue
-                            seen_paths.add(path_key)
-                            discovered.append(thread)
-                discovered = sorted(
-                    discovered,
-                    key=lambda thread: float(thread.get("updatedAt") or thread.get("updated_at") or 0),
-                    reverse=True,
-                )[:100]
-                refs = load_thread_refs(NATIVE_THREADS_FILE)
-                seen = {str(thread.get("id") or "") for thread in discovered}
-                for ref in refs:
-                    session_id = str(ref.get("nativeSessionId") or "")
-                    if not session_id or session_id in seen:
-                        continue
-                    if (
-                        str(ref.get("provider") or "") == provider
-                        and str(ref.get("profileId") or "") == expected_profile
-                    ):
-                        discovered.append(
-                            {
-                                "id": session_id,
-                                "provider": provider,
-                                "preview": str(ref.get("title") or f"{provider_label(profile)} session"),
-                                "cwd": str(ref.get("projectPath") or workspace),
-                                "createdAt": 0,
-                                "updatedAt": self._timestamp_from_iso(ref.get("updatedAt")),
-                                "path": "",
-                                "status": {"type": "notLoaded"},
-                            }
-                        )
-                        seen.add(session_id)
-                return discovered[:100]
-            if provider == "cursor":
-                discovered = discover_cursor_threads(CURSOR_HOME, workspace, limit=100)
-                refs = load_thread_refs(NATIVE_THREADS_FILE)
-                seen = {str(thread.get("id") or "") for thread in discovered}
-                for ref in refs:
-                    session_id = str(ref.get("nativeSessionId") or "")
-                    if not session_id or session_id in seen:
-                        continue
-                    if (
-                        str(ref.get("provider") or "") == provider
-                        and str(ref.get("profileId") or "") == expected_profile
-                        and self._thread_workspace_key(ref) == expected_workspace
-                    ):
-                        discovered.append(
-                            {
-                                "id": session_id,
-                                "provider": provider,
-                                "preview": str(ref.get("title") or f"{provider_label(profile)} session"),
-                                "cwd": str(ref.get("projectPath") or ""),
-                                "createdAt": 0,
-                                "updatedAt": self._timestamp_from_iso(ref.get("updatedAt")),
-                                "path": "",
-                                "status": {"type": "notLoaded"},
-                            }
-                        )
-                        seen.add(session_id)
-                return discovered[:100]
-            if provider == "antigravity":
-                return discover_antigravity_threads(Path.home() / ".gemini" / "antigravity-cli", workspace, limit=100)
-            refs = load_thread_refs(NATIVE_THREADS_FILE)
-            return [
-                {
-                    "id": str(ref.get("nativeSessionId") or ""),
-                    "provider": provider,
-                    "preview": str(ref.get("title") or f"{provider_label(profile)} session"),
-                    "cwd": str(ref.get("projectPath") or ""),
-                    "createdAt": 0,
-                    "updatedAt": self._timestamp_from_iso(ref.get("updatedAt")),
-                    "path": "",
-                    "status": {"type": "notLoaded"},
-                }
-                for ref in refs
-                if str(ref.get("provider") or "") == provider
-                and str(ref.get("profileId") or "") == expected_profile
-                and self._thread_workspace_key(ref) == expected_workspace
-            ]
-
-        def success(threads: list[dict]) -> None:
-            self.native_loading_threads = False
-            current = self.coding_selected_profile()
-            if current is None:
-                return
-            if profile_id(current) != expected_profile or normalized_path_key(self.coding_workspace_var.get()) != expected_workspace:
-                return
-            merged = self._merge_saved_thread_refs(threads, current)
-            self.native_threads = self._collapse_native_threads(merged, current)
-            self._render_coding_projects()
-
-        def run() -> None:
-            try:
-                result = worker()
-            except Exception as error:
-                self._post_native_ui(lambda value=str(error): self._native_threads_failed(value))
-                return
-            self._post_native_ui(lambda value=result: success(value))
-
-        threading.Thread(target=run, name="ai-hub-native-history", daemon=True).start()
+        return self.transport_bridge.refresh_native_threads()
 
     def _native_threads_failed(self, error: str) -> None:
-        self.native_loading_threads = False
-        self.native_threads = []
-        self.native_diagnostics.append(error)
-        self._render_coding_projects()
+        return self.transport_bridge._native_threads_failed(error)
 
     def select_native_thread(self, thread: dict) -> None:
-        profile = self.coding_selected_profile()
-        if profile is None or self.native_busy:
-            return
-        workspace = Path(str(thread.get("cwd") or self.coding_workspace_var.get() or DEFAULT_WORKSPACE))
-        session_id = str(thread.get("id") or "")
-        if not session_id:
-            return
-        self.close_native_transport()
-        self.native_generation += 1
-        generation = self.native_generation
-        self.native_busy = True
-        self.native_messages = []
-        self.native_thread_id = session_id
-        self.native_thread_title = clip_text(thread.get("preview") or thread.get("title") or "", 90)
-        self.coding_composer_status.configure(text=f"Opening {provider_label(profile)}")
-        self._render_coding()
-
-        def worker() -> tuple[CodexTransport | StreamJsonTransport | None, list[dict], bool]:
-            history_path = Path(str(thread.get("path") or ""))
-            if provider_key(profile) == "codex" and thread.get("source") == "codex-file" and history_path.is_file():
-                return None, read_codex_session_file(history_path), True
-            transport = self._create_native_transport(profile, workspace, session_id=session_id)
-            self._track_pending_transport(transport)
-            try:
-                if isinstance(transport, CodexTransport):
-                    transport.connect()
-                    resumed = transport.resume_thread(session_id, workspace)
-                    native_thread = resumed.get("thread") if isinstance(resumed.get("thread"), dict) else {}
-                    if not native_thread.get("turns"):
-                        read = transport.read_thread(session_id)
-                        native_thread = read.get("thread") if isinstance(read.get("thread"), dict) else native_thread
-                    return transport, codex_thread_messages(native_thread), False
-                if provider_key(profile) == "claude":
-                    path = Path(str(thread.get("path") or ""))
-                    return transport, read_claude_thread(path) if path.is_file() else [], False
-                if provider_key(profile) == "cursor":
-                    path = Path(str(thread.get("path") or ""))
-                    return transport, read_cursor_thread(path) if path.is_file() else [], False
-                if provider_key(profile) == "antigravity":
-                    return transport, read_antigravity_thread(
-                        Path.home() / ".gemini" / "antigravity-cli",
-                        session_id,
-                    ), False
-                return transport, [], False
-            except Exception:
-                self._stop_transport(transport)
-                self._untrack_pending_transport(transport)
-                raise
-
-        def success(result: tuple[CodexTransport | StreamJsonTransport | None, list[dict], bool]) -> None:
-            transport, messages, read_only = result
-            if transport is not None:
-                self._untrack_pending_transport(transport)
-            if generation != self.native_generation:
-                if transport is not None:
-                    self._stop_transport(transport)
-                return
-            self.native_transport = transport
-            self.native_transport_key = self._native_transport_key(profile, workspace) if transport is not None else ""
-            self.native_thread_id = session_id
-            self.native_messages = messages
-            self._restore_native_file_context(messages)
-            self.native_busy = False
-            self.coding_session_active = transport is not None
-            self.coding_workspace_var.set(str(workspace))
-            if read_only:
-                self.status_var.set(f"Opened {provider_label(profile)} history {session_id} read-only.")
-                self.coding_composer_status.configure(text="History read-only")
-            else:
-                self.status_var.set(f"Resumed {provider_label(profile)} session {session_id}.")
-            self._render_coding()
-            self.coding_input.focus_set()
-
-        self._run_native_worker(worker, success, generation)
+        return self.transport_bridge.select_native_thread(thread)
 
     def _native_event_callback(self, message: dict) -> None:
-        self._post_native_ui(lambda value=message: self._handle_native_event(value))
+        return self.transport_bridge._native_event_callback(message)
 
     def _post_native_ui(self, callback) -> None:
-        if self._closing:
-            return
-        self.native_ui_queue.put(callback)
+        return self.transport_bridge._post_native_ui(callback)
 
     def _drain_native_ui_queue(self) -> None:
-        if self._closing:
-            return
-        if self._native_queue_after_id:
-            try:
-                self.after_cancel(self._native_queue_after_id)
-            except tk.TclError:
-                pass
-            self._native_queue_after_id = None
-        try:
-            while True:
-                callback = self.native_ui_queue.get_nowait()
-                try:
-                    callback()
-                except Exception as error:
-                    self.native_diagnostics.append(f"UI event error: {error}")
-        except queue.Empty:
-            pass
-        if not self._closing:
-            try:
-                self._native_queue_after_id = self.after(50, self._drain_native_ui_queue)
-            except tk.TclError:
-                self._native_queue_after_id = None
+        return self.transport_bridge._drain_native_ui_queue()
 
     def _handle_native_event(self, message: dict) -> None:
-        method = str(message.get("method") or "")
-        params = message.get("params") if isinstance(message.get("params"), dict) else {}
-        full_render = method in {"turn/completed", "transport/exited", "error"}
-        if message.get("id") is not None and method:
-            self._handle_native_server_request(message)
-            return
-        if method == "item/agentMessage/delta":
-            self._append_native_delta(
-                str(params.get("itemId") or "agent"),
-                str(params.get("delta") or ""),
-                render=False,
-            )
-        elif method == "item/commandExecution/outputDelta":
-            self._append_native_activity_delta(
-                str(params.get("itemId") or "command"),
-                str(params.get("delta") or ""),
-                render=False,
-            )
-        elif method == "item/plan/delta":
-            self._append_native_activity_delta(
-                str(params.get("itemId") or "plan"),
-                str(params.get("delta") or ""),
-                prefix="Plan",
-                render=False,
-            )
-        elif method == "item/reasoning/summaryTextDelta":
-            self._append_native_activity_delta(
-                str(params.get("itemId") or "reasoning"),
-                str(params.get("delta") or ""),
-                prefix="Reasoning",
-                render=False,
-            )
-        elif method in {"item/started", "item/completed"}:
-            item = params.get("item") if isinstance(params.get("item"), dict) else {}
-            item_type = str(item.get("type") or "")
-            if item_type == "fileChange":
-                self._capture_native_file_changes(item)
-            if item_type in {
-                "commandExecution",
-                "fileChange",
-                "mcpToolCall",
-                "dynamicToolCall",
-                "collabToolCall",
-                "webSearch",
-                "imageView",
-                "contextCompaction",
-                "plan",
-            }:
-                text = str(item.get("text") or "") if item_type == "plan" else summarize_codex_item(item)
-                self._upsert_native_activity(
-                    str(item.get("id") or item_type),
-                    text,
-                    render=False,
-                    **self._codex_activity_fields(item),
-                )
-        elif method == "turn/started":
-            turn = params.get("turn") if isinstance(params.get("turn"), dict) else {}
-            self.native_turn_id = str(turn.get("id") or self.native_turn_id)
-            if isinstance(self.native_transport, CodexTransport):
-                self.native_transport.turn_id = self.native_turn_id
-            self.native_busy = True
-        elif method == "turn/completed":
-            turn = params.get("turn") if isinstance(params.get("turn"), dict) else {}
-            status = str(turn.get("status") or "completed")
-            error = turn.get("error")
-            self.native_busy = False
-            self.coding_composer_status.configure(text=f"Turn {status}")
-            if error:
-                self._append_native_message("error", self._native_error_text(error), render=False)
-            self._save_active_native_thread()
-            self.refresh_native_threads()
-        elif method == "turn/plan/updated":
-            text = format_codex_plan_update(params.get("plan"), params.get("explanation"))
-            if text:
-                self._upsert_native_activity(
-                    "active-plan",
-                    text,
-                    render=False,
-                    kind="plan",
-                    title="Plan",
-                    plan=params.get("plan") if isinstance(params.get("plan"), list) else [],
-                )
-        elif method == "turn/diff/updated":
-            self.native_turn_diff = coding_display_text(params.get("diff") or "")
-            if self.native_turn_diff.strip():
-                self._upsert_native_activity(
-                    "active-diff",
-                    "Current diff",
-                    render=False,
-                    kind="diff",
-                    title="Current diff",
-                    diff=self.native_turn_diff,
-                )
-        elif method == "thread/tokenUsage/updated":
-            usage = params.get("tokenUsage")
-            self.native_token_usage = usage if isinstance(usage, dict) else dict(params)
-        elif method == "skills/changed":
-            self._clear_native_skills_cache()
-            if self.coding_details_visible and self.coding_context_tab == "skills":
-                self.refresh_native_skills(force=True)
-        elif method == "stream/event":
-            provider = str(params.get("provider") or "")
-            event = params.get("event") if isinstance(params.get("event"), dict) else {}
-            self._handle_stream_event(provider, event)
-            if str(event.get("type") or "") in {"result", "error"}:
-                full_render = True
-        elif method == "transport/stderr":
-            text = coding_display_text(params.get("text") or "")
-            if text:
-                self.native_diagnostics.append(text)
-                self.native_diagnostics = self.native_diagnostics[-200:]
-        elif method == "transport/rawOutput":
-            text = coding_display_text(params.get("text") or "")
-            if text:
-                self.native_diagnostics.append(text)
-        elif method == "transport/exited":
-            exit_code = params.get("exitCode")
-            stopped = bool(params.get("stopped"))
-            stderr = str(params.get("stderr") or "").strip()
-            is_codex_server = isinstance(self.native_transport, CodexTransport)
-            if not is_codex_server or exit_code not in {None, 0}:
-                self.native_busy = False
-            if exit_code not in {None, 0} and not stopped:
-                detail = stderr or f"Native process exited with code {exit_code}."
-                self._append_native_message("error", detail, render=False)
-            if not is_codex_server:
-                self._capture_stream_session()
-                self._save_active_native_thread()
-                self.refresh_native_threads()
-        elif method == "error":
-            self.native_busy = False
-            self._append_native_message("error", self._native_error_text(params), render=False)
-        self._schedule_native_render(full=full_render)
+        return self.transport_bridge._handle_native_event(message)
 
     def _schedule_native_render(self, full: bool = False) -> None:
-        if self._closing:
-            return
-        self._native_render_full = self._native_render_full or full
-        if self._native_render_after_id:
-            return
-        try:
-            delay = CODING_NATIVE_FULL_RENDER_DELAY_MS if full else CODING_NATIVE_RENDER_DELAY_MS
-            self._native_render_after_id = self.after(delay, self._flush_native_render)
-        except tk.TclError:
-            self._native_render_after_id = None
+        return self.transport_bridge._schedule_native_render(full)
 
     def _flush_native_render(self) -> None:
-        self._native_render_after_id = None
-        if self._closing:
-            return
-        full = self._native_render_full
-        self._native_render_full = False
-        if full:
-            self._render_coding()
-            return
-        self._render_coding_stream()
-        if self.coding_details_visible:
-            self._render_coding_context()
+        return self.transport_bridge._flush_native_render()
 
     def _handle_stream_event(self, provider: str, event: dict) -> None:
-        event_type = str(event.get("type") or "")
-        session_id = event.get("session_id") or event.get("sessionId")
-        if session_id:
-            self.native_thread_id = str(session_id)
-        if provider == "claude":
-            if event_type == "rate_limit_event":
-                info = event.get("rate_limit_info") if isinstance(event.get("rate_limit_info"), dict) else {}
-                self._upsert_native_activity(
-                    "claude-rate-limit",
-                    self._format_claude_rate_limit_event(info),
-                    render=False,
-                    kind="notice",
-                    title="Claude limit",
-                )
-                self._apply_claude_rate_limit_event(info)
-            elif event_type == "stream_event":
-                stream = event.get("event") if isinstance(event.get("event"), dict) else {}
-                delta = stream.get("delta") if isinstance(stream.get("delta"), dict) else {}
-                if delta.get("type") == "text_delta":
-                    self._append_native_delta("claude-assistant", str(delta.get("text") or ""), render=False)
-            elif event_type == "assistant":
-                message = event.get("message") if isinstance(event.get("message"), dict) else {}
-                content = message.get("content") if isinstance(message.get("content"), list) else []
-                image_refs = claude_content_image_refs(content)
-                if image_refs:
-                    self._upsert_native_activity(
-                        str(event.get("uuid") or message.get("id") or "claude-image"),
-                        "Image",
-                        render=False,
-                        kind="image",
-                        title="Image",
-                        imageRefs=image_refs,
-                    )
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "tool_use":
-                        name = str(block.get("name") or "Claude tool")
-                        fields = claude_tool_activity_fields(name, block.get("input"))
-                        fields.setdefault("kind", "tool")
-                        fields.setdefault("title", name)
-                        fields.setdefault("status", "requested")
-                        self._capture_activity_file_fields(fields, "requested")
-                        self._upsert_native_activity(
-                            str(block.get("id") or name),
-                            self._claude_tool_activity_text(name, block.get("input")),
-                            render=False,
-                            **fields,
-                        )
-            elif event_type == "user":
-                message = event.get("message") if isinstance(event.get("message"), dict) else {}
-                content = message.get("content") if isinstance(message.get("content"), list) else []
-                for block in content:
-                    if not isinstance(block, dict) or block.get("type") != "tool_result":
-                        continue
-                    result_text = claude_tool_result_text(event, block)
-                    fields = claude_tool_result_fields(event, block, result_text)
-                    fields.setdefault("kind", "result")
-                    fields.setdefault("title", "Tool result")
-                    fields.setdefault("status", "completed")
-                    self._capture_activity_file_fields(fields, "completed")
-                    native_id = str(block.get("id") or block.get("tool_use_id") or event.get("uuid") or "claude-result")
-                    self._upsert_native_activity(
-                        f"{native_id}:result",
-                        result_text,
-                        render=False,
-                        **fields,
-                    )
-            elif event_type == "system" and event.get("subtype") == "api_retry":
-                attempt = event.get("attempt")
-                maximum = event.get("max_retries")
-                self._upsert_native_activity(
-                    "claude-retry",
-                    f"Retrying request {attempt}/{maximum}",
-                    render=False,
-                    kind="notice",
-                    title="Claude retry",
-                )
-            elif event_type == "system" and event.get("subtype") == "status":
-                permission_mode = str(event.get("permissionMode") or "").strip()
-                if permission_mode:
-                    text = "Claude plan mode active" if permission_mode == "plan" else f"Claude permission mode: {permission_mode}"
-                    self._upsert_native_activity(
-                        "claude-permission-mode",
-                        f"Plan\n{text}",
-                        render=False,
-                        kind="plan",
-                        title="Plan",
-                    )
-            elif event_type == "result":
-                result_text = coding_display_text(event.get("result") or "")
-                if result_text:
-                    self._finish_native_assistant_message(
-                        "claude-assistant",
-                        "claude-result",
-                        result_text,
-                        render=False,
-                    )
-                self.native_busy = False
-        elif provider == "cursor":
-            message = event.get("message") if isinstance(event.get("message"), dict) else {}
-            content = message.get("content") if isinstance(message.get("content"), list) else event.get("content")
-            text = (
-                str(event.get("delta") or event.get("text") or event.get("response") or "")
-                or extract_message_text(content)
-            )
-            role = str(event.get("role") or message.get("role") or "").lower()
-            if text and (
-                event_type in {"assistant", "assistant_message", "assistantMessage", "message", "text", "chunk", "output"}
-                or role == "assistant"
-            ):
-                self._append_native_delta("cursor-assistant", text, render=False)
-            elif event_type == "assistant":
-                message = event.get("message") if isinstance(event.get("message"), dict) else {}
-                content = message.get("content") if isinstance(message.get("content"), list) else []
-                text = "".join(
-                    str(block.get("text") or "")
-                    for block in content
-                    if isinstance(block, dict) and block.get("type") == "text"
-                )
-                self._append_native_delta("cursor-assistant", text, render=False)
-            elif event_type in {"tool_call", "toolCall", "tool_use", "toolUse"} or isinstance(event.get("tool_call") or event.get("toolCall") or event.get("tool"), dict):
-                call = (
-                    event.get("tool_call")
-                    if isinstance(event.get("tool_call"), dict)
-                    else event.get("toolCall")
-                    if isinstance(event.get("toolCall"), dict)
-                    else event.get("tool")
-                    if isinstance(event.get("tool"), dict)
-                    else {}
-                )
-                tool_name = str(call.get("name") or call.get("tool") or next(iter(call), "Cursor tool"))
-                state = str(event.get("subtype") or "")
-                self._upsert_native_activity(
-                    str(event.get("call_id") or tool_name),
-                    f"{tool_name}\n{state}",
-                    render=False,
-                    kind="tool",
-                    title=tool_name,
-                    status=state,
-                )
-            elif event_type in {"error", "fatal"} or isinstance(event.get("error"), dict):
-                error = event.get("error") if isinstance(event.get("error"), dict) else event
-                self._append_native_message("error", self._native_error_text(error), render=False)
-                self.native_busy = False
-            elif event_type in {"result", "done", "complete", "completed"}:
-                self.native_busy = False
-        elif provider == "antigravity":
-            text = str(event.get("text") or event.get("message") or "")
-            if text and event_type == "assistant":
-                self._append_native_message(
-                    "assistant",
-                    text,
-                    native_id=str(event.get("native_id") or "antigravity-assistant"),
-                    render=False,
-                )
-            elif event_type == "error":
-                self._append_native_message("error", text or "Antigravity turn failed.", render=False)
-                self.native_busy = False
+        return self.transport_bridge._handle_stream_event(provider, event)
 
     def _center_dialog(self, dialog: tk.Toplevel) -> None:
         dialog.update_idletasks()
@@ -6329,94 +5042,16 @@ class AccountCalendarApp(tk.Tk):
         return result["value"]
 
     def _handle_native_server_request(self, message: dict) -> None:
-        transport = self.native_transport
-        if not isinstance(transport, CodexTransport):
-            return
-        request_id = message.get("id")
-        method = str(message.get("method") or "")
-        params = message.get("params") if isinstance(message.get("params"), dict) else {}
-        if method in {"item/commandExecution/requestApproval", "item/fileChange/requestApproval"}:
-            command = str(params.get("command") or "")
-            reason = str(params.get("reason") or "")
-            subject = command or reason or ("Apply file changes" if "fileChange" in method else "Run native command")
-            self._upsert_native_activity(str(request_id), f"Approval requested\n{subject}", render=False)
-            self._schedule_native_render(full=False)
-            self.update_idletasks()
-            decision = self._native_request_dialog(
-                "Native approval request",
-                subject,
-                [
-                    ("Allow once", "accept", "Approve this native action once."),
-                    ("Decline", "decline", "Refuse the action and let the provider continue."),
-                    ("Cancel request", "cancel", "Cancel the provider request."),
-                ],
-                allow_text=False,
-            )
-            transport.respond(request_id, {"decision": decision or "cancel"})
-            return
-        if method == "item/tool/requestUserInput":
-            answers: dict[str, dict] = {}
-            for question in params.get("questions") or []:
-                if not isinstance(question, dict):
-                    continue
-                prompt = str(question.get("question") or question.get("header") or "Input required")
-                options = question.get("options") if isinstance(question.get("options"), list) else []
-                choices = [
-                    (
-                        str(option.get("label") or ""),
-                        str(option.get("label") or ""),
-                        str(option.get("description") or ""),
-                    )
-                    for option in options
-                    if isinstance(option, dict) and str(option.get("label") or "").strip()
-                ]
-                self._upsert_native_activity(str(request_id), f"Input requested\n{prompt}", render=False)
-                self._schedule_native_render(full=False)
-                self.update_idletasks()
-                value = self._native_request_dialog(
-                    str(question.get("header") or "Native question"),
-                    prompt,
-                    choices,
-                    secret=bool(question.get("isSecret")),
-                    allow_text=True,
-                )
-                answers[str(question.get("id") or "")] = {"answers": [] if value is None else [value]}
-            transport.respond(request_id, {"answers": answers})
-            return
-        transport.respond_error(request_id, f"AI Account Hub does not automatically grant unsupported request: {method}")
+        return self.transport_bridge._handle_native_server_request(message)
 
     def _capture_stream_session(self) -> None:
-        transport = self.native_transport
-        if isinstance(transport, StreamJsonTransport) and transport.session_id:
-            self.native_thread_id = transport.session_id
+        return self.transport_bridge._capture_stream_session()
 
     def _save_active_native_thread(self) -> None:
-        profile = self.coding_selected_profile()
-        if profile is None:
-            return
-        self._capture_stream_session()
-        if not self.native_thread_id:
-            return
-        workspace = Path(self.coding_workspace_var.get() or DEFAULT_WORKSPACE)
-        title = next(
-            (str(message.get("text") or "").strip() for message in self.native_messages if message.get("role") == "user"),
-            "Native thread",
-        )
-        self._save_native_thread_ref(profile, workspace, self.native_thread_id, title[:120])
+        return self.transport_bridge._save_active_native_thread()
 
     def _save_native_thread_ref(self, profile: dict, workspace: Path, session_id: str, title: str) -> None:
-        native_home = Path(str(profile.get("codexHome"))) if provider_key(profile) == "codex" and profile.get("codexHome") else None
-        upsert_thread_ref(
-            NATIVE_THREADS_FILE,
-            thread_ref(
-                provider_key(profile),
-                profile_id(profile),
-                workspace,
-                session_id,
-                title,
-                native_home=native_home,
-            ),
-        )
+        return self.transport_bridge._save_native_thread_ref(profile, workspace, session_id, title)
 
     def _append_native_message(
         self,
@@ -6426,49 +5061,10 @@ class AccountCalendarApp(tk.Tk):
         render: bool = True,
         **fields,
     ) -> None:
-        text = coding_display_text(text)
-        if not text and not fields.get("imageRefs"):
-            return
-        if native_id:
-            for message in reversed(self.native_messages):
-                if message.get("role") == role and message.get("nativeId") == native_id:
-                    message["text"] = text
-                    message.update(fields)
-                    if render:
-                        self._render_coding_stream()
-                    return
-        if self.native_messages:
-            previous = self.native_messages[-1]
-            if previous.get("role") == role and previous.get("text") == text:
-                return
-        message = {
-            "role": role,
-            "text": text,
-            "nativeId": native_id,
-            "timestamp": iso_utc_now(),
-        }
-        message.update(fields)
-        self.native_messages.append(message)
-        if role == "user" and not self.native_thread_title:
-            body, _attachments = coding_user_message_parts(text)
-            self.native_thread_title = clip_text(body, 90) or "New thread"
-            if hasattr(self, "coding_title"):
-                self.coding_title.configure(text=self.native_thread_title)
-        if render:
-            self._render_coding_stream()
+        return self.transport_bridge._append_native_message(role, text, native_id, render, **fields)
 
     def _append_native_delta(self, native_id: str, delta: str, render: bool = True) -> None:
-        delta = coding_display_text(delta)
-        if not delta:
-            return
-        for message in reversed(self.native_messages):
-            if message.get("role") == "assistant" and message.get("nativeId") == native_id:
-                message["text"] = coding_display_text(message.get("text") or "") + delta
-                break
-        else:
-            self._append_native_message("assistant", delta, native_id=native_id, render=False)
-        if render:
-            self._render_coding_stream()
+        return self.transport_bridge._append_native_delta(native_id, delta, render)
 
     def _finish_native_assistant_message(
         self,
@@ -6477,36 +5073,10 @@ class AccountCalendarApp(tk.Tk):
         text: str,
         render: bool = True,
     ) -> None:
-        text = coding_display_text(text)
-        if not text:
-            return
-        for message in reversed(self.native_messages):
-            if message.get("role") != "assistant":
-                continue
-            current = coding_display_text(message.get("text") or "")
-            same_stream = message.get("nativeId") == stream_native_id
-            same_text = current and (text.startswith(current) or current.startswith(text))
-            if same_stream or same_text:
-                message["text"] = text if len(text) >= len(current) else current
-                message["nativeId"] = result_native_id or stream_native_id
-                if render:
-                    self._render_coding_stream()
-                return
-        self._append_native_message("assistant", text, native_id=result_native_id, render=render)
+        return self.transport_bridge._finish_native_assistant_message(stream_native_id, result_native_id, text, render)
 
     def _upsert_native_activity(self, native_id: str, text: str, render: bool = True, **fields) -> None:
-        text = coding_display_text(text)
-        if not text and not fields:
-            return
-        for message in reversed(self.native_messages):
-            if message.get("role") == "activity" and message.get("nativeId") == native_id:
-                message["text"] = text
-                message.update(fields)
-                break
-        else:
-            self._append_native_message("activity", text, native_id=native_id, render=False, **fields)
-        if render:
-            self._render_coding_stream()
+        return self.transport_bridge._upsert_native_activity(native_id, text, render, **fields)
 
     def _append_native_activity_delta(
         self,
@@ -6515,93 +5085,22 @@ class AccountCalendarApp(tk.Tk):
         prefix: str = "Output",
         render: bool = True,
     ) -> None:
-        delta = coding_display_text(delta)
-        if not delta:
-            return
-        for message in reversed(self.native_messages):
-            if message.get("role") == "activity" and message.get("nativeId") == native_id:
-                text = coding_display_text(message.get("text") or "")
-                marker = f"\n{prefix}\n"
-                if not text.startswith(f"{prefix}\n") and marker not in text:
-                    text = text.rstrip() + marker
-                message["text"] = text + delta
-                break
-        else:
-            self._append_native_message(
-                "activity",
-                f"{prefix}\n{delta}",
-                native_id=native_id,
-                render=False,
-            )
-        if render:
-            self._render_coding_stream()
+        return self.transport_bridge._append_native_activity_delta(native_id, delta, prefix, render)
 
     def _capture_native_file_changes(self, item: dict) -> None:
-        status = str(item.get("status") or "")
-        for change in item.get("changes") or []:
-            if not isinstance(change, dict):
-                continue
-            path = str(change.get("path") or "").strip()
-            if not path:
-                continue
-            captured = {
-                "path": path,
-                "kind": str(change.get("kind") or "update"),
-                "diff": coding_display_text(change.get("diff") or ""),
-                "status": status,
-            }
-            for index, existing in enumerate(self.native_file_changes):
-                if same_local_path(existing.get("path"), path):
-                    self.native_file_changes[index] = captured
-                    break
-            else:
-                self.native_file_changes.append(captured)
+        return self.transport_bridge._capture_native_file_changes(item)
 
     def _capture_activity_file_fields(self, fields: dict, status: str = "") -> None:
-        changes = fields.get("changes") if isinstance(fields.get("changes"), list) else []
-        diff_text = coding_display_text(fields.get("diff") or "")
-        for change in changes:
-            if not isinstance(change, dict):
-                continue
-            path = str(change.get("path") or "").strip()
-            if not path:
-                continue
-            captured = {
-                "path": path,
-                "kind": str(change.get("kind") or "update"),
-                "diff": diff_text or coding_display_text(change.get("diff") or ""),
-                "status": status or str(fields.get("status") or ""),
-            }
-            for index, existing in enumerate(self.native_file_changes):
-                if same_local_path(existing.get("path"), path):
-                    self.native_file_changes[index] = captured
-                    break
-            else:
-                self.native_file_changes.append(captured)
-        if diff_text:
-            self.native_turn_diff = diff_text
+        return self.transport_bridge._capture_activity_file_fields(fields, status)
 
     def _restore_native_file_context(self, messages: list[dict]) -> None:
-        self.native_file_changes = []
-        self.native_turn_diff = ""
-        for message in messages:
-            if not isinstance(message, dict) or message.get("role") != "activity":
-                continue
-            self._capture_activity_file_fields(message, str(message.get("status") or ""))
+        return self.transport_bridge._restore_native_file_context(messages)
 
     def _native_error_text(self, error: object) -> str:
-        if isinstance(error, str):
-            return error
-        if isinstance(error, dict):
-            nested = error.get("error")
-            if isinstance(nested, (dict, str)):
-                return self._native_error_text(nested)
-            return str(error.get("message") or error.get("codexErrorInfo") or json.dumps(error, ensure_ascii=False))
-        return str(error)
+        return self.transport_bridge._native_error_text(error)
 
     def _timestamp_from_iso(self, value: object) -> float:
-        parsed = parse_iso_datetime(value)
-        return parsed.timestamp() if parsed is not None else 0.0
+        return self.transport_bridge._timestamp_from_iso(value)
 
     def set_coding_context_tab(self, tab: str) -> None:
         if tab not in {"session", "skills", "files", "terminal"}:
