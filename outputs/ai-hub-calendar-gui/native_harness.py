@@ -1,3 +1,21 @@
+"""Native passthrough harness for provider CLIs/SDKs.
+
+This is the Tk-free engine that discovers, reads, and drives the real provider
+sessions the Hub is a thin client on top of. It does NOT run its own agent loop.
+Responsibilities:
+
+- **Thread discovery/reading** per provider — Codex rollout files + `state_5.sqlite`
+  (`discover_codex_file_threads`, `load_codex_state_threads`), Claude `.jsonl`
+  transcripts (`read_claude_thread`, `claude_tool_activity_fields`), Cursor agent
+  transcripts (`discover_all_cursor_threads`), and Antigravity brain sessions.
+- **Workspace/project registries** (`load_codex_saved_workspaces`, the global
+  `.codex-global-state.json`).
+- **Process/session lifecycle** for launching and streaming a native session.
+
+All paths are derived from `Path.home()` / environment variables (see
+`hub_core`), so it works for any user with the provider tools installed.
+"""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -681,6 +699,7 @@ class AntigravityTransport(StreamJsonTransport):
         cli_home: Path | None = None,
         model: str = "",
         access_mode: str = "default",
+        print_timeout: str = "5m",
     ) -> None:
         super().__init__(
             "antigravity",
@@ -691,7 +710,8 @@ class AntigravityTransport(StreamJsonTransport):
             model=model,
             access_mode=access_mode,
         )
-        self.cli_home = Path(cli_home or (Path.home() / ".gemini" / "antigravity-cli"))
+        self.cli_home = Path(cli_home) if cli_home is not None else antigravity_cli_home()
+        self.print_timeout = print_timeout or "5m"
 
     def send(self, text: str) -> int:
         if self.alive:
@@ -706,7 +726,7 @@ class AntigravityTransport(StreamJsonTransport):
             args.append("--sandbox")
         elif self.access_mode == "full-access":
             args.append("--dangerously-skip-permissions")
-        args.extend(["--print", text, "--print-timeout", "5m"])
+        args.extend(["--print", text, "--print-timeout", self.print_timeout])
         self._stopping = False
         self.process = subprocess.Popen(
             args,
@@ -978,6 +998,26 @@ def claude_tool_input_diff(name: str, tool_input: object) -> str:
     return ""
 
 
+def claude_edit_line_counts(payload: dict, kind: str) -> tuple[int, int]:
+    """Approximate +added/-removed line counts from a Claude Edit/Write/MultiEdit
+    tool input (Claude records the content but not diff stats). Computed here from
+    the full payload, before any UI truncation."""
+    def nlines(value: object) -> int:
+        text = str(value or "")
+        return text.count("\n") + 1 if text else 0
+
+    if isinstance(payload.get("edits"), list):
+        added = removed = 0
+        for edit in payload["edits"]:
+            if isinstance(edit, dict):
+                added += nlines(edit.get("new_string"))
+                removed += nlines(edit.get("old_string"))
+        return added, removed
+    if kind == "write" or payload.get("content") is not None:
+        return nlines(payload.get("content")), 0
+    return nlines(payload.get("new_string")), nlines(payload.get("old_string"))
+
+
 def claude_tool_activity_fields(name: str, tool_input: object) -> dict:
     payload = tool_input if isinstance(tool_input, dict) else {}
     tool_name = str(name or "").strip()
@@ -990,7 +1030,11 @@ def claude_tool_activity_fields(name: str, tool_input: object) -> dict:
     path = claude_tool_file_path(payload)
     diff = claude_tool_input_diff(tool_name, payload)
     if path:
-        fields["changes"] = [{"path": path, "kind": lowered or "file"}]
+        change: dict[str, object] = {"path": path, "kind": lowered or "file"}
+        added, removed = claude_edit_line_counts(payload, lowered)
+        if added or removed:
+            change["added"], change["removed"] = added, removed
+        fields["changes"] = [change]
     if diff:
         fields["kind"] = "diff"
         fields["title"] = "File changes"
@@ -1516,6 +1560,13 @@ def antigravity_last_conversation_id(cli_home: Path, cwd: Path) -> str:
     return ""
 
 
+def antigravity_cli_home() -> Path:
+    override = os.environ.get("ANTIGRAVITY_CLI_HOME", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".gemini" / "antigravity-cli"
+
+
 def antigravity_transcript_path(cli_home: Path, session_id: str) -> Path:
     return Path(cli_home) / "brain" / session_id / ".system_generated" / "logs" / "transcript.jsonl"
 
@@ -1527,22 +1578,30 @@ def extract_antigravity_user_request(content: str) -> str:
 
 def read_antigravity_thread(cli_home: Path, session_id: str) -> list[dict]:
     if not session_id:
+        _logger.debug("read_antigravity_thread: empty session id for cli_home=%s", cli_home)
         return []
     path = antigravity_transcript_path(cli_home, session_id)
     if not path.is_file():
+        _logger.debug("read_antigravity_thread: transcript not found at %s", path)
         return []
     messages: list[dict] = []
+    skipped_types: dict[str, int] = {}
+    malformed = 0
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         for line_number, line in enumerate(handle, start=1):
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
+                malformed += 1
+                _logger.debug("read_antigravity_thread: malformed JSON at %s:%s", path, line_number)
                 continue
             if not isinstance(entry, dict):
+                malformed += 1
                 continue
             entry_type = str(entry.get("type") or "")
             content = str(entry.get("content") or "").strip()
             if not content:
+                skipped_types[entry_type or "<empty>"] = skipped_types.get(entry_type or "<empty>", 0) + 1
                 continue
             if entry_type == "USER_INPUT":
                 text = extract_antigravity_user_request(content)
@@ -1551,6 +1610,7 @@ def read_antigravity_thread(cli_home: Path, session_id: str) -> list[dict]:
                 text = content
                 role = "assistant"
             else:
+                skipped_types[entry_type or "<empty>"] = skipped_types.get(entry_type or "<empty>", 0) + 1
                 continue
             messages.append(
                 {
@@ -1560,6 +1620,21 @@ def read_antigravity_thread(cli_home: Path, session_id: str) -> list[dict]:
                     "timestamp": str(entry.get("created_at") or ""),
                 }
             )
+    if not messages:
+        _logger.debug(
+            "read_antigravity_thread: no readable messages in %s; malformed=%s skipped=%s",
+            path,
+            malformed,
+            skipped_types,
+        )
+    elif malformed or skipped_types:
+        _logger.debug(
+            "read_antigravity_thread: read %s messages from %s; malformed=%s skipped=%s",
+            len(messages),
+            path,
+            malformed,
+            skipped_types,
+        )
     return messages
 
 
@@ -1583,6 +1658,128 @@ def discover_antigravity_threads(cli_home: Path, cwd: Path, limit: int = 100) ->
             "status": {"type": "notLoaded"},
         }
     ][:limit]
+
+
+_CURSOR_PATH_ROOT_TOKENS = {
+    "github", "documents", "desktop", "source", "sources", "repos", "repo",
+    "projects", "project", "dev", "code", "onedrive", "users", "home",
+    "workspace", "workspaces", "git", "src",
+}
+
+
+def _cursor_path_root_tokens() -> set[str]:
+    """Root/path-container folder names to strip when decoding a Cursor project
+    dir. Includes the current user's home-dir/login name so the decode works for
+    any user, not a hardcoded one."""
+    tokens = set(_CURSOR_PATH_ROOT_TOKENS)
+    for name in (os.environ.get("USERNAME"), os.environ.get("USER"), Path.home().name):
+        if name:
+            tokens.add(str(name).lower())
+    return tokens
+
+
+def cursor_decode_project_name(dir_name: str) -> str:
+    """Best-effort readable project name from a Cursor project dir name
+    (e.g. 'a-Github-AI-GUI' -> 'AI-GUI'). Cursor encodes the workspace path with
+    every non-alphanumeric run collapsed to '-', so the original '\\' vs '_' is
+    unrecoverable; drop the drive letter and any leading path-root folders and
+    keep the trailing component(s)."""
+    root_tokens = _cursor_path_root_tokens()
+    parts = [p for p in str(dir_name).split("-") if p]
+    if parts and len(parts[0]) == 1 and parts[0].isalpha():
+        parts = parts[1:]  # drop drive letter
+    last_root = -1
+    for i, part in enumerate(parts):
+        if part.lower() in root_tokens:
+            last_root = i
+    if 0 <= last_root < len(parts) - 1:
+        parts = parts[last_root + 1:]
+    return "-".join(parts) or str(dir_name)
+
+
+def cursor_clean_user_text(text: object) -> str:
+    """Unwrap Cursor's ``<user_query>…</user_query>`` (and drop other angle-tag
+    wrappers) so previews read as plain text."""
+    raw = str(text or "").strip()
+    match = re.search(r"<user_query>\s*(.*?)\s*</user_query>", raw, flags=re.S | re.I)
+    if match:
+        raw = match.group(1).strip()
+    raw = re.sub(r"^<[^>]+>\s*|\s*</[^>]+>$", "", raw).strip()
+    return raw
+
+
+def discover_all_cursor_threads(cursor_home: Path, limit: int = 200) -> list[dict]:
+    """Every Cursor Agent thread across all of Cursor's projects (not just one
+    workspace), each tagged with a readable project name so the sidebar can group
+    them like Codex/Claude. Transcripts with no user turn are skipped."""
+    projects_root = Path(cursor_home) / "projects"
+    if not projects_root.is_dir():
+        return []
+    try:
+        project_dirs = [d for d in projects_root.iterdir() if d.is_dir()]
+    except OSError:
+        return []
+    threads: list[dict] = []
+    for pdir in project_dirs:
+        transcript_root = pdir / "agent-transcripts"
+        if not transcript_root.is_dir():
+            continue
+        name = cursor_decode_project_name(pdir.name)
+        try:
+            paths = [
+                p for p in transcript_root.glob("*/*.jsonl")
+                if p.parent.name != "subagents" and p.stem == p.parent.name
+            ]
+        except OSError:
+            continue
+        for path in paths:
+            messages = read_cursor_thread(path)
+            preview = next((str(m.get("text") or "") for m in messages if m.get("role") == "user"), "")
+            preview = cursor_clean_user_text(preview)
+            if not preview:
+                continue  # empty / agent-only transcript
+            threads.append({
+                "id": path.stem,
+                "provider": "cursor",
+                "preview": preview,
+                "cwd": name,
+                "createdAt": path.stat().st_ctime if path.exists() else 0,
+                "updatedAt": path.stat().st_mtime if path.exists() else 0,
+                "path": str(path),
+                "status": {"type": "notLoaded"},
+            })
+    return sorted(threads, key=lambda t: float(t.get("updatedAt") or 0), reverse=True)[:limit]
+
+
+def discover_all_antigravity_threads(cli_home: Path, limit: int = 100) -> list[dict]:
+    """Every Antigravity conversation tracked in last_conversations.json, keyed by
+    the workspace it ran in, so the sidebar can group them by project."""
+    cache = Path(cli_home) / "cache" / "last_conversations.json"
+    try:
+        data = json.loads(cache.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    threads: list[dict] = []
+    for raw_path, conversation_id in data.items():
+        cid = str(conversation_id or "")
+        if not cid:
+            continue
+        path = antigravity_transcript_path(cli_home, cid)
+        messages = read_antigravity_thread(cli_home, cid)
+        preview = next((str(m.get("text") or "") for m in messages if m.get("role") == "user"), "")
+        threads.append({
+            "id": cid,
+            "provider": "antigravity",
+            "preview": preview or "Antigravity session",
+            "cwd": clean_windows_path_text(raw_path),
+            "createdAt": path.stat().st_ctime if path.exists() else 0,
+            "updatedAt": path.stat().st_mtime if path.exists() else 0,
+            "path": str(path),
+            "status": {"type": "notLoaded"},
+        })
+    return sorted(threads, key=lambda t: float(t.get("updatedAt") or 0), reverse=True)[:limit]
 
 
 def codex_session_id_from_path(path: Path) -> str:
@@ -1780,8 +1977,11 @@ def load_codex_state_threads(codex_homes: list[Path]) -> tuple[dict[str, dict], 
         except sqlite3.Error:
             continue
         try:
+            # select * so we tolerate older/newer schemas; the extra columns
+            # (archived, tokens_used) let callers match Codex Desktop, which
+            # hides archived and empty (zero-token) threads.
             rows = connection.execute(
-                "select id, rollout_path, created_at, updated_at, cwd, title from threads order by updated_at desc"
+                "select * from threads order by updated_at desc"
             ).fetchall()
         except sqlite3.Error:
             rows = []
@@ -1799,8 +1999,13 @@ def load_codex_state_threads(codex_homes: list[Path]) -> tuple[dict[str, dict], 
                 "path": rollout_path,
                 "cwd": cwd,
                 "title": str(item.get("title") or ""),
+                "preview": str(item.get("preview") or ""),
+                "firstUserMessage": str(item.get("first_user_message") or ""),
                 "createdAt": float(item.get("created_at") or 0),
                 "updatedAt": float(item.get("updated_at") or 0),
+                "archived": int(item.get("archived") or 0),
+                "tokensUsed": int(item.get("tokens_used") or 0),
+                "hasUserEvent": int(item.get("has_user_event") or 0),
             }
             existing = by_id.get(session_id)
             if not existing or normalized["updatedAt"] >= float(existing.get("updatedAt") or 0):
@@ -1850,6 +2055,12 @@ def apply_codex_state_metadata(summary: dict, state: dict | None, index: dict[st
         state_title = str(state.get("title") or "").strip()
         if state_title:
             result["preview"] = state_title
+        # Carry Codex Desktop's own thread flags so callers can hide archived
+        # and empty (zero-token, never-run) sessions the way the app does.
+        result["hasState"] = True
+        result["archived"] = int(state.get("archived") or 0)
+        result["tokensUsed"] = int(state.get("tokensUsed") or 0)
+        result["hasUserEvent"] = int(state.get("hasUserEvent") or 0)
     session_id = str(result.get("id") or "")
     indexed = index.get(session_id, {})
     indexed_title = str(indexed.get("thread_name") or indexed.get("title") or "").strip()

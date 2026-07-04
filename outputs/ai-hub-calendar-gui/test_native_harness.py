@@ -272,6 +272,28 @@ class NativeHarnessTests(unittest.TestCase):
             self.assertEqual([message["role"] for message in messages], ["user", "assistant"])
             self.assertEqual(messages[-1]["text"], "Inspection complete.")
 
+    def test_antigravity_thread_reader_logs_format_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "antigravity-cli"
+            session_id = "44444444-4444-4444-4444-444444444444"
+            transcript = native.antigravity_transcript_path(home, session_id)
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text(
+                "\n".join(
+                    [
+                        "{not-json",
+                        json.dumps({"type": "NEW_EVENT_KIND", "content": "new payload"}),
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertLogs("native_harness", level="DEBUG") as logs:
+                self.assertEqual(native.read_antigravity_thread(home, session_id), [])
+            joined = "\n".join(logs.output)
+            self.assertIn("malformed JSON", joined)
+            self.assertIn("no readable messages", joined)
+            self.assertIn("NEW_EVENT_KIND", joined)
+
     def test_cursor_history_discovery_and_read_use_agent_transcripts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cursor_home = Path(tmp) / ".cursor"

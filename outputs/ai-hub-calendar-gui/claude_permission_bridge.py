@@ -1,3 +1,11 @@
+"""Claude Code permission bridge.
+
+A small stdio helper that answers Claude Code's permission/approval prompts on
+behalf of the Hub's Coding workspace, so a native Claude Code session can run
+under the Hub's chosen permission mode (accept-edits / plan / manual) instead of
+blocking on interactive prompts. Talks to the CLI over JSON on stdin/stdout.
+"""
+
 from __future__ import annotations
 
 import json
@@ -8,6 +16,7 @@ import urllib.request
 
 
 TOOL_NAME = "mcp_auth_tool"
+DEFAULT_HUB_TIMEOUT_SECONDS = 310.0
 
 
 def log(message: str) -> None:
@@ -57,9 +66,21 @@ def call_hub(payload: dict) -> dict:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=310) as response:
+        timeout_seconds = float(os.environ.get("AI_HUB_PERMISSION_TIMEOUT_SECONDS", "").strip() or DEFAULT_HUB_TIMEOUT_SECONDS)
+    except ValueError:
+        timeout_seconds = DEFAULT_HUB_TIMEOUT_SECONDS
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read().decode("utf-8", errors="replace")
+    except TimeoutError as error:
+        # Distinguish this from a real user rejection: this is the Hub UI
+        # not answering within timeout_seconds, not a "Deny" click. Logged so
+        # it's visible in the bridge's own stderr, not just buried in the
+        # deny message text Claude receives.
+        log(f"permission request timed out after {timeout_seconds}s: {error}")
+        return make_deny(f"AI Account Hub did not respond to the permission request within {timeout_seconds:.0f}s.", tool_use_id)
     except (OSError, urllib.error.URLError) as error:
+        log(f"permission request failed: {error}")
         return make_deny(f"AI Account Hub permission bridge failed: {error}", tool_use_id)
     try:
         result = json.loads(raw)

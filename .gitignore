@@ -1,6 +1,81 @@
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Full reference clone of pingdotgg/t3code with its own git history and
-# node_modules-scale assets (~244MB) — kept locally for research only.
-work/t3code-audit/
+# Virtual environments and local env files.
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# OS/editor noise.
+.DS_Store
+Thumbs.db
+.vs/
+*.swp
+*.tmp
+*.bak
+*.log
+
+# Local provider/account state. These may contain auth/session metadata.
+.claude/
+.codex-account-launcher/
+.codex-accounts/
+.ai-account-hub/
+provider-discovery.json
+
+# Claude Desktop state must never be committed if a diagnostic or an old build
+# accidentally targets the repository root. These names are anchored so normal
+# project files in subdirectories are unaffected.
+/config.json
+/claude_desktop_config.json
+/buddy-tokens.json
+/ant-did
+/Local State
+/Preferences
+/DIPS
+/DIPS-wal
+/DIPS-shm
+/Network/
+/Local Storage/
+/IndexedDB/
+/Session Storage/
+/Partitions/
+/WebStorage/
+/SharedStorage/
+/blob_storage/
+/Shared Dictionary/
+
+# Runtime QA captures and generated provider icon cache.
+outputs/ai-hub-calendar-gui/qa-*
+outputs/ai-hub-calendar-gui/assets/*.png
+!outputs/ai-hub-calendar-gui/assets/.gitkeep
+
+# Public documentation belongs in Docs/. On Windows, Docs/ and docs/ are the
+# same path, so private notes use local-docs/ instead of lowercase docs/.
+local-docs/**
+!local-docs/.gitkeep
+!local-docs/**/
+!local-docs/**/.gitkeep
+
+# Local research/schemas/probes. The release should only keep the placeholder.
+work/*
+!work/.gitkeep
+
+# The maintained test suite is public. Ad-hoc probes belong under ignored
+# local-docs/ or work/ instead of using a broad test_*.py exclusion.
+
+# Public docs live at Docs/*.md; the private notes subdir stays local.
+/Docs/private/
+
+# Design/prototype launchers and other stray .bat/.cmd — only the top-level
+# Start-AI-Account-Hub.bat launcher ships.
+outputs/**/*.bat
+outputs/**/open-*.bat
+outputs/runcodex.bat
