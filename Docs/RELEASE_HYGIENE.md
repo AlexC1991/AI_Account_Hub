@@ -17,8 +17,10 @@ These paths are intended to be safe for GitHub:
 - `Docs/`
 - `outputs/ai-hub-calendar-gui/`
 - `outputs/ai-hub-qt/`
+- `outputs/ai-hub-qt/demo_data.py`
 - `outputs/ai-hub-calendar-gui/test_*.py`
 - `outputs/ai-hub-qt/test_*.py`
+- `screenshots/`
 
 ## Private Or Local Only
 
@@ -33,11 +35,10 @@ These paths are ignored and should not be uploaded:
 - `provider-discovery.json`
 - `outputs/ai-hub-calendar-gui/qa-*`
 - `outputs/ai-hub-calendar-gui/assets/*.png`
-- `outputs/ai-hub-qt/demo_data.py`
 
 The ignored folders keep only `.gitkeep` placeholders in the public tree. Put
-machine-specific audits, provider probes, screenshots, exported sessions, and
-temporary schemas under `local-docs/` instead of committing them.
+machine-specific audits, provider probes, private screenshots, exported
+sessions, and temporary schemas under `local-docs/` instead of committing them.
 
 ## Before Publishing
 

@@ -1524,15 +1524,12 @@ def coding_sidebar_thread_preview_limit(thread_count: int, selected: bool, expan
 
 
 CODING_FALLBACK_MODELS = {
-    "codex": [
-        ("Default", ""),
-        ("GPT-5.5", "gpt-5.5"),
-        ("GPT-5.4 mini", "gpt-5.4-mini"),
-        ("GPT-5.3 Codex Spark", "gpt-5.3-codex-spark"),
-    ],
-    "claude": [("Default", ""), ("Claude Opus 4.5", "opus"), ("Claude Sonnet 4.5", "sonnet"), ("Claude Haiku 4.5", "haiku")],
-    "cursor": [("Default", ""), ("Cursor Small", "cursor-small"), ("Cursor Large", "cursor-large")],
-    "antigravity": [("Default", ""), ("Gemini 2.5 Pro", "gemini-2.5-pro"), ("Gemini 2.5 Flash", "gemini-2.5-flash")],
+    # Keep fallbacks generic so the UI does not advertise speculative or
+    # provider-internal model names when a harness cannot list models.
+    "codex": [("Provider default", "")],
+    "claude": [("Provider default", "")],
+    "cursor": [("Provider default", "")],
+    "antigravity": [("Provider default", "")],
 }
 
 CODING_ACCESS_OPTIONS = {
