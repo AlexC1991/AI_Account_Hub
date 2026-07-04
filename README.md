@@ -12,24 +12,32 @@ The app keeps provider behavior owned by the official tools:
 
 ## Screenshots
 
-The Accounts dashboard — profiles with live limits, the usage calendar, and the
-per-account detail rail (shown here in demo mode, so no real account data):
+All screenshots below are captured in demo mode, so no real account names,
+emails, limits, or tokens are shown.
 
-![AI Account Hub — Accounts dashboard](screenshots/dashboard.png)
+### Accounts Dashboard
 
-<p align="center">
-  <img src="screenshots/calendar.png" alt="Usage calendar with reset-day detail" width="49%">
-  <img src="screenshots/day-detail.png" alt="Per-day usage broken down by account" width="49%">
-</p>
+![AI Account Hub Accounts dashboard](screenshots/dashboard.png)
 
-<p align="center">
-  <img src="screenshots/account-detail.png" alt="Combined account stats rail" width="320">
-  &nbsp;&nbsp;
-  <img src="screenshots/themes.png" alt="Built-in themes" width="300">
-</p>
+The main dashboard shows provider profiles, ready/not-ready state, weekly usage
+left, session usage left, calendar reset markers, and the selected account rail.
 
-More images live in [`screenshots/`](screenshots/). Tip: capture them from
-**Help → View demo (sample data)** so no real account data is shown.
+### Calendar And Daily Usage
+
+| Usage calendar | Selected day detail |
+|---|---|
+| <img src="screenshots/calendar.png" alt="Monthly usage calendar with token totals and weekly reset markers"> | <img src="screenshots/day-detail.png" alt="Selected day details with per-account usage rows"> |
+| The calendar groups daily usage, token totals, and reset markers so you can see when accounts refresh. | Clicking a day opens a focused detail view with that day's records, tokens, active time, and reset events. |
+
+### Account Rail And Themes
+
+| Account detail rail | Theme picker |
+|---|---|
+| <img src="screenshots/account-detail.png" alt="Right-side account detail rail with session actions and usage stats"> | <img src="screenshots/themes.png" alt="Theme menu showing built-in color themes"> |
+| The right rail keeps account actions, auth tools, usage stats, and activity logs together for the selected profile. | Built-in themes let the app switch visual style without changing account data or provider state. |
+
+More images live in [`screenshots/`](screenshots/). Use **Help → View demo
+(sample data)** before capturing new screenshots for GitHub.
 
 ## Features
 
