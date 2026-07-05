@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 
+from ai_account_hub.core import hub_core
 from ai_account_hub.core.hub_core import *  # noqa: F401,F403
 
 def calendar_reset_chip_label(marker: object) -> str:
@@ -330,7 +331,7 @@ CODING_EFFORT_OPTIONS = {
 def read_coding_profile_defaults(profile: dict) -> dict[str, str]:
     provider = provider_key(profile)
     if provider == "codex":
-        path = Path(str(profile.get("codexHome") or DEFAULT_CODEX_HOME)) / "config.toml"
+        path = Path(str(profile.get("codexHome") or hub_core.DEFAULT_CODEX_HOME)) / "config.toml"
         if not path.is_file():
             return {}
         try:

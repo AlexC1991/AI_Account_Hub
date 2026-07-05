@@ -7,11 +7,16 @@ referenced by the state machine; pulled in here via ``from hub_core import *``).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 from pathlib import Path
 
+from ai_account_hub.core import hub_core
 from ai_account_hub.core.hub_core import *  # noqa: F401,F403
+
+_logger = logging.getLogger(__name__)
+
 
 def is_safe_online_url(url: object) -> bool:
     parsed = urlparse(str(url or "").strip())
@@ -220,8 +225,8 @@ def desktop_cookie_source(profile: dict) -> dict | None:
     (claude.ai sessionKey); Codex/ChatGPT and Antigravity have no local web
     cookie to reuse (CLI auth is an API token / Google SSO, not a web session)."""
     if provider_key(profile) == "claude":
-        cookies = CLAUDE_ROAMING_HOME / "Network" / "Cookies"
-        local_state = CLAUDE_ROAMING_HOME / "Local State"
+        cookies = hub_core.CLAUDE_ROAMING_HOME / "Network" / "Cookies"
+        local_state = hub_core.CLAUDE_ROAMING_HOME / "Local State"
         if cookies.exists() and local_state.exists():
             return {"cookies": cookies, "local_state": local_state, "app": "Claude Desktop"}
     return None

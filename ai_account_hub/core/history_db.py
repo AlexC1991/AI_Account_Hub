@@ -8,11 +8,12 @@ from __future__ import annotations
 import json
 import sqlite3
 
+from ai_account_hub.core import hub_core
 from ai_account_hub.core.hub_core import *  # noqa: F401,F403
 
 def init_history_db() -> None:
-    LAUNCHER_ROOT.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(HISTORY_DB_FILE)
+    hub_core.LAUNCHER_ROOT.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(hub_core.HISTORY_DB_FILE)
     try:
         connection.executescript(
             """
@@ -87,7 +88,7 @@ def record_profile_history(profile: dict, refresh_reason: str = "refresh") -> No
     pid = profile_id(profile)
     provider = provider_key(profile)
     name = str(profile.get("name") or "Account")
-    connection = sqlite3.connect(HISTORY_DB_FILE)
+    connection = sqlite3.connect(hub_core.HISTORY_DB_FILE)
     try:
         for bucket in profile.get("usageDailyBuckets") or []:
             if not isinstance(bucket, dict):
@@ -180,7 +181,7 @@ def history_usage_entries(profiles: list[dict], iso_day: str | None = None) -> l
         query += " where bucket_day = ?"
         params.append(iso_day)
     query += " order by bucket_day, profile_name, provider"
-    connection = sqlite3.connect(HISTORY_DB_FILE)
+    connection = sqlite3.connect(hub_core.HISTORY_DB_FILE)
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute(query, params).fetchall()
@@ -220,7 +221,7 @@ def history_usage_entries(profiles: list[dict], iso_day: str | None = None) -> l
 
 def history_limit_count() -> int:
     init_history_db()
-    connection = sqlite3.connect(HISTORY_DB_FILE)
+    connection = sqlite3.connect(hub_core.HISTORY_DB_FILE)
     try:
         row = connection.execute("select count(*) from limit_history").fetchone()
         return int(row[0] if row else 0)
