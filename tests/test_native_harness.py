@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 
-MODULE_PATH = Path(__file__).with_name("native_harness.py")
+MODULE_PATH = Path(__file__).resolve().parents[1] / "ai_account_hub" / "harness" / "native_harness.py"
 SPEC = importlib.util.spec_from_file_location("native_harness", MODULE_PATH)
 native = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = native

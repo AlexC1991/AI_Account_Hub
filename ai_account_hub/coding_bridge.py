@@ -27,8 +27,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
-import data
-import legacy_backend as L
+from ai_account_hub import data
+from ai_account_hub import core as L
 
 
 class CodingBridge(QObject):

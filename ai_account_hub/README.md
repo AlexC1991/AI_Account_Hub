@@ -5,12 +5,12 @@ design handoff with persistent Coding and Accounts screens in a
 `QStackedWidget`, so switching sections preserves the active account, project,
 thread, composer, calendar, filters, and scroll position.
 
-The former Tk UI has been retired. Its reusable provider and account logic was
-extracted into the Tk-free `../ai-hub-calendar-gui/hub_core.py`; transport,
-discovery, permission, and history modules remain beside that shared core.
+The former Tk UI has been retired. Its reusable provider and account logic lives
+in the Tk-free backend `core/hub_core.py`; transport, discovery, permission, and
+history modules sit in `core/` and `harness/` beside that shared core.
 
-The public paid Claude enrollment guide is available from **Help > Claude
-account setup** and at `../../Docs/CLAUDE_ACCOUNT_SETUP.md`.
+The public paid Claude enrollment guide is available from **Help > Account
+setup** and at `../Docs/CLAUDE_ACCOUNT_SETUP.md`.
 
 ## Run
 
@@ -20,16 +20,17 @@ Start-AI-Account-Hub.bat
 
 Run that single launcher from the repository root. It checks Python, installs
 the declared Python package requirements when needed, refreshes provider
-discovery, and then opens this app. For development,
-`py -3 outputs\ai-hub-qt\main.py` starts the same entry point.
+discovery, and then opens this app. For development, `py -3 main.py` (or
+`py -3 -m ai_account_hub`) from the repo root starts the same entry point.
 
 ## Architecture
 
 The UI reuses the existing provider logic instead of replacing the official
 harnesses:
 
-- `legacy_backend.py` loads `hub_core.py`, the extracted Tk-free helper layer.
-- `hub_engine.py` owns provider discovery and account actions. Blocking probes
+- `core/` (the `ai_account_hub.core` package) re-exports `hub_core.py`, the
+  Tk-free helper layer, and holds `provider_discovery.py`.
+- `engine.py` owns provider discovery and account actions. Blocking probes
   run on worker threads.
 - `coding_bridge.py` reuses the `native_harness` transports directly and
   marshals their events to the UI through Qt signals.
@@ -103,20 +104,21 @@ Hub logo, stateful section switching, automatic refresh, provider icons, and
 all bundled themes as live-swappable QSS.
 
 ## Files
-- `main.py` — entry point.  `main_window.py` — frameless shell + header + stack.
-- `theme.py` / `tokens.py` — QSS theme manager + the 8 design themes.
+- `app.py` — bootstrap (`main()`).  `ui/main_window.py` — frameless shell + header + stack.
+- `ui/theme.py` / `ui/tokens.py` — QSS theme manager + the design themes.
 - `data.py` — profiles/discovery/limits/threads (Tk-free).
-- `legacy_backend.py` / `hub_engine.py` — backend reuse + engine.
+- `core/` — `hub_core.py` (backend) + `provider_discovery.py`; `engine.py` — engine.
 - `coding_bridge.py` — native transport passthrough + approvals → Qt signals.
-- `modals.py` — add/edit profile dialogs.
-- `widgets.py`, `calendar_widget.py`, `screens/accounts_screen.py`,
-  `screens/coding_screen.py`.
+- `ui/modals.py` — add/edit profile dialogs.
+- `ui/widgets.py`, `ui/calendar_widget.py`, `ui/screens/accounts_screen.py`,
+  `ui/screens/coding_screen.py`.
+- `harness/` — `native_harness.py` transports + `claude_permission_bridge.py`.
 
 ## Test
 
 From the repository root:
 
 ```bat
-python -m compileall -q outputs\ai-hub-calendar-gui outputs\ai-hub-qt
-python -m pytest outputs\ai-hub-calendar-gui outputs\ai-hub-qt -q
+python -m compileall -q ai_account_hub
+python -m pytest -q
 ```

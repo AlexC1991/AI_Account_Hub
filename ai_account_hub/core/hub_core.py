@@ -37,11 +37,10 @@ except ModuleNotFoundError:  # Python 3.10 uses the tomli backport.
     import tomli as tomllib
 
 MODULE_DIR = Path(__file__).resolve().parent
-if str(MODULE_DIR) not in sys.path:
-    sys.path.insert(0, str(MODULE_DIR))
-CLAUDE_PERMISSION_BRIDGE_PATH = MODULE_DIR / "claude_permission_bridge.py"
+PACKAGE_DIR = MODULE_DIR.parent  # the ai_account_hub package root
+CLAUDE_PERMISSION_BRIDGE_PATH = PACKAGE_DIR / "harness" / "claude_permission_bridge.py"
 
-from provider_discovery import (  # noqa: E402
+from .provider_discovery import (  # noqa: E402
     default_report_path,
     discover_provider_tools,
     load_fresh_report,
@@ -50,7 +49,7 @@ from provider_discovery import (  # noqa: E402
 
 _logger = logging.getLogger(__name__)
 
-from native_harness import (  # noqa: E402
+from ..harness.native_harness import (  # noqa: E402
     AntigravityTransport,
     CodexTransport,
     NativeTransportError,
@@ -99,9 +98,9 @@ BLUE = "#236f95"
 BLUE_SOFT = "#e2f1f7"
 DARK = "#1c2922"
 
-SCRIPT_DIR = MODULE_DIR
-OUTPUTS_DIR = SCRIPT_DIR.parent
-HELPER_PATH = OUTPUTS_DIR / "codex-account-limits-helper.mjs"
+SCRIPT_DIR = PACKAGE_DIR              # ai_account_hub/ package root (holds assets/)
+REPO_ROOT = PACKAGE_DIR.parent        # repository root (holds scripts/, main.py)
+HELPER_PATH = REPO_ROOT / "scripts" / "codex-account-limits-helper.mjs"
 LAUNCHER_ROOT = Path(os.environ.get("AI_HUB_LAUNCHER_ROOT", str(Path.home() / ".codex-account-launcher"))).expanduser()
 PROFILES_FILE = LAUNCHER_ROOT / "profiles.json"
 DESKTOP_BACKUP_ROOT = LAUNCHER_ROOT / "desktop-default-backup"

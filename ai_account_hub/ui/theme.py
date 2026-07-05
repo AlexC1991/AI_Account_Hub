@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
 
-from tokens import THEMES, DEFAULT_THEME, accent_gradient, soft, light_variant
+from ai_account_hub.ui.tokens import THEMES, DEFAULT_THEME, accent_gradient, soft, light_variant
 
 
 class ThemeManager(QObject):
@@ -60,7 +60,7 @@ class ThemeManager(QObject):
         self._tokens = self._compute()
         self._app.setStyleSheet(build_qss(self._tokens))
         # Push tokens to custom-painted widgets (AccentButton) that don't read QSS.
-        import widgets
+        from ai_account_hub.ui import widgets
         widgets.set_active_tokens(self._tokens)
         self.changed.emit(self._name)
 

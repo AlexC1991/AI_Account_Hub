@@ -17,12 +17,12 @@ from PySide6.QtWidgets import (
     QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
-import data
-from theme import ThemeManager
-from tokens import DEFAULT_THEME, THEMES
-from widgets import NetworkLogo, SegmentedSlider, Spinner, TitleBar, make_button, network_icon
-from screens.accounts_screen import AccountsScreen
-from screens.coding_screen import CodingScreen
+from ai_account_hub import data
+from ai_account_hub.ui.theme import ThemeManager
+from ai_account_hub.ui.tokens import DEFAULT_THEME, THEMES
+from ai_account_hub.ui.widgets import NetworkLogo, SegmentedSlider, Spinner, TitleBar, make_button, network_icon
+from ai_account_hub.ui.screens.accounts_screen import AccountsScreen
+from ai_account_hub.ui.screens.coding_screen import CodingScreen
 
 
 class MainWindow(QWidget):
@@ -194,21 +194,21 @@ class MainWindow(QWidget):
         is already the demo, just say so instead of stacking more copies."""
         import sys
         import subprocess
-        import demo_data
+        from ai_account_hub import demo_data
         if demo_data.DEMO:
             QMessageBox.information(
                 self, "Demo mode",
                 "This window is already showing sample demo data.",
             )
             return
-        main_py = Path(__file__).resolve().parent / "main.py"
+        repo_root = Path(__file__).resolve().parents[2]  # ui/ -> ai_account_hub/ -> repo
         env = dict(os.environ)
         env["AI_HUB_DEMO"] = "1"
         try:
             subprocess.Popen(
-                [sys.executable, str(main_py)],
+                [sys.executable, "-m", "ai_account_hub"],
                 env=env,
-                cwd=str(main_py.parent),
+                cwd=str(repo_root),
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         except Exception as error:  # never let a demo launch crash the real app

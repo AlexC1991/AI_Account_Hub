@@ -1,7 +1,7 @@
 """Backend engine for the Qt port.
 
 The whole point: reuse the existing, working logic rather than reimplement it.
-`hub_core` (imported via legacy_backend) holds a large library of pure, non-UI
+`hub_core` (imported via ``ai_account_hub.core``) holds a large library of pure, non-UI
 functions (limit parsing, profile state, history, discovery, launch helpers,
 provider probes). This engine re-ports only the handful of thin *methods* that
 were entangled with the old Tk god-class (the subprocess probe + refresh
@@ -19,7 +19,7 @@ import re
 import datetime as _dt
 from pathlib import Path
 
-import legacy_backend as L  # thin alias import, see bottom
+from ai_account_hub import core as L
 
 _logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class HubEngine:
     # ---------- discovery (mirrors legacy._discover_tools path extraction) ----------
     def discover_tools(self) -> None:
         try:
-            import provider_discovery
+            from ai_account_hub.core import provider_discovery
 
             report = provider_discovery.discover_provider_tools()
             providers = report.get("providers") if isinstance(report.get("providers"), dict) else {}

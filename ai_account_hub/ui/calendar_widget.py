@@ -15,9 +15,9 @@ import datetime as _dt
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-import data
-import legacy_backend as L
-from widgets import ElidedLabel, make_button
+from ai_account_hub import data
+from ai_account_hub import core as L
+from ai_account_hub.ui.widgets import ElidedLabel, make_button
 
 _WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
@@ -320,5 +320,5 @@ class CalendarWidget(QFrame):
 
 
 def _soft(hexcolor: str, alpha: float = 0.16) -> str:
-    from tokens import rgba
+    from ai_account_hub.ui.tokens import rgba
     return rgba(hexcolor, alpha)

@@ -18,12 +18,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QTextEdit
 
-import data
-import legacy_backend as L
-from main_window import MainWindow
-from coding_bridge import CodingBridge
-from hub_engine import HubEngine
-from modals import AddProfileDialog
+from ai_account_hub import data
+from ai_account_hub import core as L
+from ai_account_hub.ui.main_window import MainWindow
+from ai_account_hub.coding_bridge import CodingBridge
+from ai_account_hub.engine import HubEngine
+from ai_account_hub.ui.modals import AddProfileDialog
 
 
 def _write_cookie_db(path: Path, value: str) -> None:
@@ -143,7 +143,7 @@ def test_window_restores_menus_icons_and_all_visible_mode() -> None:
             "Cursor",
             "Antigravity",
         ]
-        assert (Path(__file__).resolve().parents[2] / "Docs" / "CLAUDE_ACCOUNT_SETUP.md").is_file()
+        assert (Path(__file__).resolve().parents[1] / "Docs" / "CLAUDE_ACCOUNT_SETUP.md").is_file()
         assert window.accounts._selected is None
         assert window.accounts.action_host.isHidden()
         assert all(not card.avatar._pixmap.isNull() for card in window.accounts._cards.values())

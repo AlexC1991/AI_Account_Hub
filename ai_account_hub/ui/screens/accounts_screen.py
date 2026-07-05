@@ -16,10 +16,10 @@ from PySide6.QtWidgets import (
     QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
-import data
-import legacy_backend as L
-from tokens import severity_color
-from widgets import AccentBar, Avatar, ElidedLabel, SeverityBar, StatusPill, make_button
+from ai_account_hub import data
+from ai_account_hub import core as L
+from ai_account_hub.ui.tokens import severity_color
+from ai_account_hub.ui.widgets import AccentBar, Avatar, ElidedLabel, SeverityBar, StatusPill, make_button
 
 
 class RefreshWorker(QThread):
@@ -223,7 +223,7 @@ class AccountCard(QFrame):
 
 
 def _soft(hexcolor: str, alpha: float = 0.16) -> str:
-    from tokens import rgba
+    from ai_account_hub.ui.tokens import rgba
     return rgba(hexcolor, alpha)
 
 
@@ -465,7 +465,7 @@ class AccountsScreen(QWidget):
             stats.addWidget(card)
         lay.addLayout(stats)
 
-        from calendar_widget import CalendarWidget
+        from ai_account_hub.ui.calendar_widget import CalendarWidget
         self.calendar = CalendarWidget(self._tm)
         self.calendar.day_clicked.connect(self._show_day_detail)
         lay.addWidget(self.calendar, 1)
@@ -1114,7 +1114,7 @@ class AccountsScreen(QWidget):
 
     # ---------- real refresh (background thread, update in place) ----------
     def refresh_all(self, reason: str = "refresh-all") -> None:
-        import demo_data
+        from ai_account_hub import demo_data
         if demo_data.DEMO:
             self._append_log("Demo mode: refresh is disabled (showing sample data).")
             return
@@ -1372,7 +1372,7 @@ class AccountsScreen(QWidget):
                 self._rebuild_cards(); self._update_detail()
             return
         # edit: full form modal
-        from modals import EditProfileDialog
+        from ai_account_hub.ui.modals import EditProfileDialog
         dlg = EditProfileDialog(self, profile)
         if dlg.exec():
             data.save_profiles(self._profiles)
@@ -1381,7 +1381,7 @@ class AccountsScreen(QWidget):
             self._rebuild_cards(); self._update_detail()
 
     def _add_profile_dialog(self) -> None:
-        from modals import AddProfileDialog
+        from ai_account_hub.ui.modals import AddProfileDialog
         dlg = AddProfileDialog(self, len(self._profiles))
         if not dlg.exec() or dlg.result_profile is None:
             return

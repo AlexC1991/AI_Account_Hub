@@ -1,18 +1,16 @@
-"""Entry point for the AI Account Hub Qt (PySide6) port.
+"""Application bootstrap for AI Account Hub (PySide6 / Qt).
 
-Run:  py main.py
+Prefer launching via ``py -3 main.py`` from the repo root, or ``python -m
+ai_account_hub``. Both resolve to :func:`main` here.
 """
 
 from __future__ import annotations
 
 import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from PySide6.QtWidgets import QApplication
 
-from main_window import MainWindow
+from ai_account_hub.ui.main_window import MainWindow
 
 
 def main() -> int:

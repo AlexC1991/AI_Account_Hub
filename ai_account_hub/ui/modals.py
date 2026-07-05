@@ -16,9 +16,9 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QVBoxLayout,
 )
 
-import data
-import legacy_backend as L
-from widgets import make_button
+from ai_account_hub import data
+from ai_account_hub import core as L
+from ai_account_hub.ui.widgets import make_button
 
 _PLAN_DEFAULTS = {"codex": "Plus", "claude": "Pro", "cursor": "Pro", "antigravity": "Pro"}
 _PROVIDERS = [

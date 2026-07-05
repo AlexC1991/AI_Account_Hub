@@ -1,9 +1,8 @@
-"""Data layer for the Qt port: profiles, provider metadata, usage/limits.
+"""Data layer for the Qt UI: profiles, provider metadata, usage/limits.
 
-Deliberately Tk-free. Reuses the existing standalone backend modules
-(`native_harness`, `provider_discovery`) from the sibling ai-hub-calendar-gui
-folder, and reads the established machine-local profiles.json. No provider
-auth token is read or stored here.
+Deliberately Tk-free. Bridges the UI to the shared backend
+(:mod:`ai_account_hub.core`) and reads the established machine-local
+profiles.json. No provider auth token is read or stored here.
 """
 
 from __future__ import annotations
@@ -11,17 +10,11 @@ from __future__ import annotations
 import base64
 import json
 import os
-import sys
 from pathlib import Path
 
-# Make the existing Tk-free backend importable without importing the Tk GUI.
-_LEGACY_DIR = Path(__file__).resolve().parent.parent / "ai-hub-calendar-gui"
-if str(_LEGACY_DIR) not in sys.path:
-    sys.path.insert(0, str(_LEGACY_DIR))
-
-import legacy_backend as L
-import demo_data  # AI_HUB_DEMO=1: fake accounts/usage for screenshots (see below)
-from tokens import PROVIDER_COLORS, PROVIDER_LETTERS, PROVIDER_LABELS, THEMES
+from ai_account_hub import core as L
+from ai_account_hub import demo_data  # AI_HUB_DEMO=1: fake accounts for screenshots
+from ai_account_hub.ui.tokens import PROVIDER_COLORS, PROVIDER_LETTERS, PROVIDER_LABELS, THEMES
 
 # Demo mode (AI_HUB_DEMO=1) shows fake sample accounts so the UI can be shown or
 # screenshotted without exposing real data. Redirect the shared usage-history
@@ -35,7 +28,7 @@ LAUNCHER_ROOT = Path(
     os.environ.get("AI_HUB_LAUNCHER_ROOT", str(Path.home() / ".codex-account-launcher"))
 ).expanduser()
 PROFILES_FILE = LAUNCHER_ROOT / "profiles.json"
-ASSETS_DIR = _LEGACY_DIR / "assets"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 _PROVIDER_ICON_CACHE: dict[str, str] = {}
 
 
@@ -187,7 +180,7 @@ def engine():
     """Lazily-constructed shared backend engine (does provider discovery once)."""
     global _ENGINE
     if _ENGINE is None:
-        from hub_engine import HubEngine
+        from ai_account_hub.engine import HubEngine
         _ENGINE = HubEngine()
     return _ENGINE
 
@@ -214,7 +207,7 @@ def save_profiles(profiles: list[dict]) -> None:
 def discover_tools() -> dict:
     """Provider discovery via the shared, Tk-free scanner. Never fatal."""
     try:
-        import provider_discovery  # noqa: PLC0415
+        from ai_account_hub.core import provider_discovery  # noqa: PLC0415
 
         return provider_discovery.discover_provider_tools()
     except Exception:  # pragma: no cover - discovery must never block the UI
@@ -223,7 +216,7 @@ def discover_tools() -> dict:
 
 def native():
     """The Tk-free native_harness module (transports + history discovery)."""
-    import native_harness
+    from ai_account_hub.harness import native_harness
     return native_harness
 
 

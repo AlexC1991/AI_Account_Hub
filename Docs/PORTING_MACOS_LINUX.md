@@ -1,11 +1,12 @@
 # Porting AI Account Hub to macOS and Linux
 
-AI Account Hub is a **Windows-first PySide6 (Qt) desktop app**. The UI is
-`outputs/ai-hub-qt/` and the Tk-free shared backend is
-`outputs/ai-hub-calendar-gui/` (`hub_core.py`, `native_harness.py`,
-`provider_discovery.py`). Provider path discovery is already cross-platform, but
-several backend readers, process/desktop control, the frameless title bar, and
-the browser cookie-seeding path still assume Windows.
+AI Account Hub is a **Windows-first PySide6 (Qt) desktop app** shipped as the
+`ai_account_hub` package. The UI is `ai_account_hub/ui/`, the Tk-free shared
+backend is `ai_account_hub/core/` (`hub_core.py`, `provider_discovery.py`), and
+the native transports are in `ai_account_hub/harness/` (`native_harness.py`,
+`claude_permission_bridge.py`). Provider path discovery is already
+cross-platform, but several backend readers, process/desktop control, the
+frameless title bar, and the browser cookie-seeding path still assume Windows.
 
 This guide is the remaining work to run the whole GUI on macOS or Linux. Do not
 call a port complete just because the provider binaries were found.
@@ -37,10 +38,10 @@ call a port complete just because the provider binaries were found.
 
 | Area | Where | Windows behavior | macOS / Linux replacement |
 |---|---|---|---|
-| Open file/folder/doc | `main_window.py` `_open_readme` / `_open_setup_doc` / "Open profile folder"; `hub_engine.py` "Open home" (`os.startfile`) | `os.startfile(path)` | Use Qt's cross-platform `QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))` (already imported in `coding_screen.py`). Fallback: `open` (macOS) / `xdg-open` (Linux). |
+| Open file/folder/doc | `main_window.py` `_open_readme` / `_open_setup_doc` / "Open profile folder"; `engine.py` "Open home" (`os.startfile`) | `os.startfile(path)` | Use Qt's cross-platform `QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))` (already imported in `coding_screen.py`). Fallback: `open` (macOS) / `xdg-open` (Linux). |
 | App/AppX discovery | `hub_core.py` `get_appx_install_location`, Codex/Cursor/Antigravity locators; `provider_discovery.py` | `powershell.exe … Get-AppxPackage`, `C:/Program Files`, `WindowsApps` | macOS: `/Applications/*.app`, `~/Applications`, Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`). Linux: `PATH`, `~/.local/bin`, `/opt/<App>`, `.desktop` entries. |
 | Title-bar theming | `hub_core.py` `configure_windows_titlebar` (`ctypes.windll` DWM) | DWM dark caption color | No-op outside Windows; Qt draws the frameless bar itself. |
-| Provider process launch/stop | `hub_engine.py`, `native_harness.py` | `Start-Process`, `subprocess` with Windows exe names | Argument-based `subprocess`; provider-specific stop that returns diagnostics, never a broad name-kill. |
+| Provider process launch/stop | `engine.py`, `native_harness.py` | `Start-Process`, `subprocess` with Windows exe names | Argument-based `subprocess`; provider-specific stop that returns diagnostics, never a broad name-kill. |
 | Isolated browser for "Online" | `hub_core.py` `locate_account_browser_path`, `browser_profile_launch_args` | `chrome.exe` / `msedge.exe` / `brave.exe` under Program Files / LOCALAPPDATA | See *Browser profiles* below. |
 | **Desktop cookie seeding** | `hub_core.py` `seed_browser_profile_from_desktop`, `desktop_cookie_source`, `_shared_read_copy` (`ctypes` `CreateFileW`) | Copies Claude Desktop's `Local State` (DPAPI key) + `Network/Cookies` into a fresh Chrome profile | **Windows-only.** It already degrades gracefully to a one-time manual login. On macOS/Linux Chrome cookie encryption uses Keychain / libsecret-kwallet, so either implement an equivalent seeder or just leave the graceful manual-login fallback. |
 | Claude Desktop state | `hub_core.py` `CLAUDE_ROAMING_HOME`, `claude_desktop_login_status` | `%APPDATA%/Claude` | macOS `~/Library/Application Support/Claude`; Linux `~/.config/Claude`. |
@@ -63,7 +64,7 @@ changes the report path, pass `AI_HUB_DISCOVERY_REPORT` — do not fork the sche
 
 ## Required platform adapter
 
-Add one module (e.g. `outputs/ai-hub-qt/platform_adapter.py`) and route the
+Add one module (e.g. `ai_account_hub/platform_adapter.py`) and route the
 Windows-specific calls through it:
 
 ```python
@@ -112,11 +113,10 @@ should mirror `Start-AI-Account-Hub.bat` but target the Qt entry point:
 #!/usr/bin/env sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-DISCOVERY="$ROOT/outputs/ai-hub-calendar-gui/provider_discovery.py"
-APP="$ROOT/outputs/ai-hub-qt/main.py"
+DISCOVERY="$ROOT/ai_account_hub/core/provider_discovery.py"
 python3 -m pip install -r "$ROOT/requirements.txt" >/dev/null 2>&1 || true
 if python3 "$DISCOVERY" --write-report --quiet; then export AI_HUB_DISCOVERY_BOOTSTRAPPED=1; fi
-exec python3 "$APP"
+cd "$ROOT" && exec python3 -m ai_account_hub
 ```
 
 ## Browser profiles ("Online")
@@ -149,18 +149,13 @@ Windows.
 Run the shipped unit tests, compilation, and an offscreen boot/self-test:
 
 ```sh
-QT_QPA_PLATFORM=offscreen python3 -m pytest \
-  outputs/ai-hub-calendar-gui outputs/ai-hub-qt -q
+QT_QPA_PLATFORM=offscreen python3 -m pytest -q
 
-python -m py_compile outputs/ai-hub-qt/main.py outputs/ai-hub-qt/main_window.py \
-  outputs/ai-hub-qt/data.py outputs/ai-hub-calendar-gui/hub_core.py \
-  outputs/ai-hub-calendar-gui/native_harness.py \
-  outputs/ai-hub-calendar-gui/provider_discovery.py
+python3 -m compileall -q ai_account_hub
 
 AI_HUB_LAUNCHER_ROOT="$(mktemp -d)" QT_QPA_PLATFORM=offscreen \
   python3 -c "from PySide6.QtWidgets import QApplication; a=QApplication([]); \
-  import sys; sys.path.insert(0,'outputs/ai-hub-qt'); \
-  from main_window import MainWindow; MainWindow(a); print('boots')"
+  from ai_account_hub.ui.main_window import MainWindow; MainWindow(a); print('boots')"
 ```
 
 Add platform-specific checks for: `.app` launching (macOS); XDG data/config/state

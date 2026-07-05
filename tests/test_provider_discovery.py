@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import provider_discovery as discovery
+from ai_account_hub.core import provider_discovery as discovery
 
 
 class ProviderDiscoveryTests(unittest.TestCase):
@@ -136,7 +136,7 @@ class ProviderDiscoveryTests(unittest.TestCase):
             self.assertIsNone(discovery.load_fresh_report(target, max_age_seconds=30))
 
     def test_root_batch_launcher_runs_discovery_before_gui(self) -> None:
-        launcher = Path(__file__).resolve().parents[2] / "Start-AI-Account-Hub.bat"
+        launcher = Path(__file__).resolve().parents[1] / "Start-AI-Account-Hub.bat"
         text = launcher.read_text(encoding="utf-8")
         self.assertIn("provider_discovery.py", text)
         self.assertIn("--write-report --quiet", text)

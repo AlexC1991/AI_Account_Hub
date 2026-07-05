@@ -96,12 +96,15 @@ Start-AI-Account-Hub.bat
 Or run it directly:
 
 ```bat
-py -3 outputs\ai-hub-qt\main.py
+py -3 main.py
 ```
 
-The GUI is a PySide6 (Qt) desktop app (`outputs\ai-hub-qt\`). Its provider
-logic lives in the shared, Tk-free backend `outputs\ai-hub-calendar-gui\hub_core.py`;
-`native_harness.py` and `provider_discovery.py` sit alongside it.
+(equivalent to `py -3 -m ai_account_hub`.)
+
+The app is the `ai_account_hub` package: the PySide6 (Qt) front-end is in
+`ai_account_hub\ui\`, and the shared, Tk-free backend is in `ai_account_hub\core\`
+(`hub_core.py`, `provider_discovery.py`). Native provider transports live in
+`ai_account_hub\harness\`.
 
 ## Platform support
 
@@ -145,7 +148,7 @@ The machine-local result is written atomically to:
 The report contains installation paths, discovery sources, versions, and warnings. It does not read or serialize provider credentials, cookies, refresh tokens, or API keys. To regenerate it manually, run:
 
 ```bat
-py -3 outputs\ai-hub-calendar-gui\provider_discovery.py --write-report
+py -3 ai_account_hub\core\provider_discovery.py --write-report
 ```
 
 ### Path Overrides
@@ -215,12 +218,13 @@ Hub or use **Reload** to run the same clean scan again.
 Useful checks:
 
 ```bat
-python -m compileall -q outputs\ai-hub-calendar-gui outputs\ai-hub-qt
-python -m pytest outputs\ai-hub-calendar-gui outputs\ai-hub-qt -q
+python -m compileall -q ai_account_hub
+python -m pytest -q
 ```
 
-The Qt front-end lives in `outputs\ai-hub-qt\` (see its own `README.md`).
-Its UI tests use Qt's offscreen platform and do not require a visible window.
+The Qt front-end lives in `ai_account_hub\ui\` (see the package `README.md`).
+The tests live in `tests\` and use Qt's offscreen platform, so they do not
+require a visible window.
 
 ## Porting
 

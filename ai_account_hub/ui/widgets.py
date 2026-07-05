@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget,
 )
 
-from tokens import accent_gradient, rgba, severity_color
+from ai_account_hub.ui.tokens import accent_gradient, rgba, severity_color
 
 
 class NetworkLogo(QWidget):

@@ -22,9 +22,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-import data
-import legacy_backend as L
-from widgets import (
+from ai_account_hub import data
+from ai_account_hub import core as L
+from ai_account_hub.ui.widgets import (
     Avatar, CyclePill, Dot, ElidedLabel, FolderTag, NetworkLogo,
     SegmentedControl, StatusPill, ToggleSwitch, make_button,
 )
@@ -89,7 +89,7 @@ def _thread_preview(th: dict) -> str:
 
 
 def _soft(hexcolor: str, alpha: float = 0.16) -> str:
-    from tokens import rgba
+    from ai_account_hub.ui.tokens import rgba
     return rgba(hexcolor, alpha)
 
 
@@ -179,7 +179,7 @@ class CodingScreen(QWidget):
         self._history_visible_count = 100
         self._project_generation = 0
         self._project_cache: dict[str, tuple[list[dict], list[dict]]] = {}
-        from coding_bridge import CodingBridge
+        from ai_account_hub.coding_bridge import CodingBridge
         self._bridge = CodingBridge()
         self._build()
         self._bridge.assistant_delta.connect(self._on_assistant_delta)
@@ -1874,7 +1874,7 @@ class CodingScreen(QWidget):
 
     def _on_claude_permission(self, key: str) -> None:
         from PySide6.QtWidgets import QInputDialog, QMessageBox
-        from coding_bridge import allow_decision, _deny
+        from ai_account_hub.coding_bridge import allow_decision, _deny
         payload = self._bridge.permission_payload(key)
         tool = str(payload.get("tool_name") or "Claude tool")
         tool_input = payload.get("input") if isinstance(payload.get("input"), dict) else {}

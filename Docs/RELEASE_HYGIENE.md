@@ -13,13 +13,14 @@ These paths are intended to be safe for GitHub:
 
 - `README.md`
 - `LICENSE`
+- `pyproject.toml`
+- `main.py`
 - `Start-AI-Account-Hub.bat`
 - `Docs/`
-- `outputs/ai-hub-calendar-gui/`
-- `outputs/ai-hub-qt/`
-- `outputs/ai-hub-qt/demo_data.py`
-- `outputs/ai-hub-calendar-gui/test_*.py`
-- `outputs/ai-hub-qt/test_*.py`
+- `ai_account_hub/` (the app package: `ui/`, `core/`, `harness/`)
+- `ai_account_hub/demo_data.py`
+- `tests/`
+- `scripts/`
 - `screenshots/`
 
 ## Private Or Local Only
@@ -33,8 +34,7 @@ These paths are ignored and should not be uploaded:
 - `.codex-accounts/`
 - `.ai-account-hub/`
 - `provider-discovery.json`
-- `outputs/ai-hub-calendar-gui/qa-*`
-- `outputs/ai-hub-calendar-gui/assets/*.png`
+- `ai_account_hub/assets/*.png`
 
 The ignored folders keep only `.gitkeep` placeholders in the public tree. Put
 machine-specific audits, provider probes, private screenshots, exported
@@ -48,9 +48,9 @@ Run the release audit from the repository root:
 git status --short --ignored
 git ls-files -co --exclude-standard
 rg -n --hidden --glob '!.git/**' --glob '!local-docs/**' --glob '!work/**' -i "(refresh[_-]?token|access[_-]?token|authorization|bearer|cookie|session|auth\.json|profiles\.json|C:\\\\Users\\\\)"
-python -m compileall -q outputs\ai-hub-calendar-gui outputs\ai-hub-qt
+python -m compileall -q ai_account_hub
 $env:QT_QPA_PLATFORM = "offscreen"
-python -m pytest outputs\ai-hub-calendar-gui outputs\ai-hub-qt -q
+python -m pytest -q
 ```
 
 The current Git history may still contain older research artifacts from local
