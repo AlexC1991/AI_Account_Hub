@@ -95,6 +95,17 @@ def _profiles() -> list[dict]:
     ]
 
 
+def test_first_run_starts_with_no_seeded_profiles(monkeypatch, tmp_path) -> None:
+    launcher = tmp_path / "launcher"
+    profiles_file = launcher / "profiles.json"
+    monkeypatch.setattr(L.mod, "LAUNCHER_ROOT", launcher)
+    monkeypatch.setattr(L.mod, "PROFILES_FILE", profiles_file)
+
+    assert L.load_profiles() == []
+    assert json.loads(profiles_file.read_text(encoding="utf-8")) == []
+    assert data.load_profiles() == []
+
+
 def _window() -> tuple[QApplication, MainWindow]:
     app = QApplication.instance() or QApplication([])
     data._ENGINE = None

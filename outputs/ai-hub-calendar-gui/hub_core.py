@@ -1994,7 +1994,9 @@ def normalize_profile(raw: object, index: int) -> dict:
 
 
 def default_profiles() -> list[dict]:
-    return [normalize_profile({"name": f"Account {index}", "codexHome": str(DEFAULT_ACCOUNTS_ROOT / f"account-{index}")}, index - 1) for index in range(1, 4)]
+    # First-run should be private and explicit: do not create placeholder Codex
+    # accounts until the user adds or imports real profiles.
+    return []
 
 
 def load_profiles() -> list[dict]:
