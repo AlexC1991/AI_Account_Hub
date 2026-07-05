@@ -1143,8 +1143,11 @@ def get_weekly_reset_estimate(profile: dict, result: dict) -> tuple[str, str]:
     weekly_window = rate_limits.get("weeklyWindow") or {}
     api_reset = iso_from_value(weekly_window.get("resetsAtIso")) if weekly_window else ""
 
-    last_reset = parse_iso_datetime(profile.get("lastResetUtc"))
-    if last_reset is not None and last_reset >= dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7):
+    # Trust the provider's actual weekly-window reset time whenever it reports one
+    # — that is the authoritative rolling-window reset (Codex sends it on the
+    # 10080-minute window). Only fall back to a usage-based estimate (earliest
+    # used day in the current window + 7 days) when the probe returned no reset.
+    if api_reset:
         return api_reset, "api"
 
     buckets = ((result.get("usage") or {}).get("dailyUsageBuckets") or [])
@@ -1167,7 +1170,7 @@ def get_weekly_reset_estimate(profile: dict, result: dict) -> tuple[str, str]:
     if used_dates:
         estimate = min(used_dates) + dt.timedelta(days=7)
         return dt.datetime.combine(estimate, dt.time(), tzinfo=dt.timezone.utc).isoformat(), "usage"
-    return api_reset, "api"
+    return "", "none"
 
 
 def estimate_weekly_reset_from_bucket_days(day_strings: list) -> str:

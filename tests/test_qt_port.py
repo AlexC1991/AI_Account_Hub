@@ -340,3 +340,36 @@ def test_claude_all_models_week_is_not_overwritten_by_model_row() -> None:
     assert parsed["weeklyModelUsedPercent"] == {"Fable": 0.0}
 
 
+
+
+def test_codex_weekly_reset_prefers_api_reset_over_usage_estimate() -> None:
+    # Codex reports an actual weekly-window reset; it must win over the
+    # earliest-used-day + 7 usage estimate (which used to override it).
+    api_reset = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=5)).isoformat()
+    today = _dt.datetime.now(_dt.timezone.utc).date()
+    result = {
+        "ok": True,
+        "rateLimits": {"weeklyWindow": {"resetsAtIso": api_reset, "windowDurationMins": 10080}},
+        "usage": {"dailyUsageBuckets": [{"date": (today - _dt.timedelta(days=4)).isoformat(), "totalTokens": 1000}]},
+    }
+    estimate, source = L.get_weekly_reset_estimate({}, result)
+    assert source == "api"
+    assert estimate == L.iso_from_value(api_reset)
+
+    # And set_profile_limits_from_result stores that actual reset in both fields.
+    profile: dict = {}
+    L.set_profile_limits_from_result(profile, result)
+    assert profile["weeklyResetEstimateUtc"] == L.iso_from_value(api_reset)
+    assert profile["weeklyLimitResetUtc"] == L.iso_from_value(api_reset)
+
+
+def test_codex_weekly_reset_estimates_only_when_provider_omits_reset() -> None:
+    today = _dt.datetime.now(_dt.timezone.utc).date()
+    result = {
+        "ok": True,
+        "rateLimits": {"weeklyWindow": {}},
+        "usage": {"dailyUsageBuckets": [{"date": (today - _dt.timedelta(days=4)).isoformat(), "totalTokens": 1000}]},
+    }
+    estimate, source = L.get_weekly_reset_estimate({}, result)
+    assert source == "usage"
+    assert estimate.startswith((today + _dt.timedelta(days=3)).isoformat())
