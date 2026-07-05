@@ -11,6 +11,23 @@ The app keeps provider behavior owned by the official tools:
 - Cursor uses Cursor Desktop and Cursor Agent when installed.
 - Antigravity uses the installed Antigravity desktop app and a healthy standalone `agy` CLI when exposed.
 
+## Why Not A Proxy Or Pooler?
+
+AI Account Hub does **not** sit between your prompts and the providers. It does
+not create a shared API endpoint, proxy traffic, merge accounts into one fake
+quota, or replace the provider harnesses you already use.
+
+Instead, it manages isolated local profiles and launches the official apps or
+CLIs with the selected profile active. The goal is to make multi-account usage
+visible and less error-prone: see which accounts are ready, which are cooling
+down, when weekly/session limits appear to reset, and then open Codex, Claude
+Code, Cursor, or Antigravity directly with the right local state.
+
+That difference matters because proxy/pooling tools usually become a new
+runtime surface. AI Account Hub is intentionally thinner: provider tools keep
+their own auth, execution, context, model behavior, updates, and safety prompts.
+The Hub is the account dashboard and launcher around them.
+
 ## Screenshots
 
 All screenshots below are captured in demo mode, so no real account names,
