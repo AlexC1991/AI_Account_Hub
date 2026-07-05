@@ -19,7 +19,6 @@ These paths are intended to be safe for GitHub:
 - `Docs/`
 - `ai_account_hub/` (the app package: `ui/`, `core/`, `harness/`)
 - `ai_account_hub/demo_data.py`
-- `tests/`
 - `scripts/`
 - `screenshots/`
 
@@ -29,6 +28,7 @@ These paths are ignored and should not be uploaded:
 
 - `local-docs/`
 - `work/`
+- `tests/` and `conftest.py` (kept local, not shipped)
 - `.claude/`
 - `.codex-account-launcher/`
 - `.codex-accounts/`
@@ -49,8 +49,6 @@ git status --short --ignored
 git ls-files -co --exclude-standard
 rg -n --hidden --glob '!.git/**' --glob '!local-docs/**' --glob '!work/**' -i "(refresh[_-]?token|access[_-]?token|authorization|bearer|cookie|session|auth\.json|profiles\.json|C:\\\\Users\\\\)"
 python -m compileall -q ai_account_hub
-$env:QT_QPA_PLATFORM = "offscreen"
-python -m pytest -q
 ```
 
 The current Git history may still contain older research artifacts from local

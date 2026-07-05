@@ -74,8 +74,11 @@ From the repository root:
 
 ```bat
 python -m compileall -q ai_account_hub
-python -m pytest -q
 ```
 
-Tests use Qt's offscreen platform and are sandboxed to a throwaway launcher
-directory (`conftest.py`), so they never touch your real `profiles.json`.
+An offscreen boot self-test (no visible window) is a good end-to-end check:
+
+```bat
+set QT_QPA_PLATFORM=offscreen
+py -3 -c "from PySide6.QtWidgets import QApplication; a=QApplication([]); from ai_account_hub.ui.main_window import MainWindow; MainWindow(a); print('boots')"
+```

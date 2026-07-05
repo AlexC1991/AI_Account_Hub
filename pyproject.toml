@@ -12,9 +12,6 @@ license = { file = "LICENSE" }
 authors = [{ name = "AlexC1991" }]
 dependencies = ["PySide6>=6.8,<7"]
 
-[project.optional-dependencies]
-dev = ["pytest"]
-
 [project.urls]
 Homepage = "https://github.com/AlexC1991/AI_Account_Hub"
 
@@ -23,6 +20,3 @@ ai-account-hub = "ai_account_hub.app:main"
 
 [tool.setuptools.packages.find]
 include = ["ai_account_hub*"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]

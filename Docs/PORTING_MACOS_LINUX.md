@@ -146,11 +146,9 @@ Windows.
 
 ## Testing checklist
 
-Run the shipped unit tests, compilation, and an offscreen boot/self-test:
+Verify with compilation plus an offscreen boot/self-test:
 
 ```sh
-QT_QPA_PLATFORM=offscreen python3 -m pytest -q
-
 python3 -m compileall -q ai_account_hub
 
 AI_HUB_LAUNCHER_ROOT="$(mktemp -d)" QT_QPA_PLATFORM=offscreen \

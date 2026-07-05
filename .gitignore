@@ -68,8 +68,11 @@ local-docs/**
 work/*
 !work/.gitkeep
 
-# The maintained test suite is public. Ad-hoc probes belong under ignored
-# local-docs/ or work/ instead of using a broad test_*.py exclusion.
+# Tests are kept local, not shipped in the public repo.
+/tests/
+/conftest.py
+test_*.py
+**/test_*.py
 
 # Public docs live at Docs/*.md; the private notes subdir stays local.
 /Docs/private/
