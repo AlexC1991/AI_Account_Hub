@@ -10,10 +10,11 @@ attribute so callers can simply do ``from ai_account_hub import core`` and use
 from __future__ import annotations
 
 from . import hub_core
-# Leaf domains extracted from hub_core (they ``from hub_core import *`` internally
-# and add their own functions). Mirrored here too so ``core.NAME`` still exposes
-# the full public API regardless of which module a function now lives in.
-from . import coding_text
+# Leaf domains extracted from hub_core (each does ``from hub_core import *``
+# internally and adds its own functions). Mirrored here too so ``core.NAME``
+# still exposes the full public API regardless of which module a function lives
+# in now.
+from . import coding_text, history_db, browser
 
 # ``mod`` is the underlying hub_core module (historical name from the old
 # ``legacy_backend`` shim). Patch attributes on ``core.mod`` to affect the real
@@ -22,7 +23,7 @@ mod = hub_core
 
 # Mirror every public attribute so ``core.NAME`` works for anything, without
 # maintaining an allow-list. ``core.hub_core.NAME`` / ``core.mod.NAME`` too.
-for _src in (hub_core, coding_text):
+for _src in (hub_core, coding_text, history_db, browser):
     for _name in dir(_src):
         if not _name.startswith("__"):
             globals()[_name] = getattr(_src, _name)
