@@ -36,9 +36,10 @@ These paths are ignored and should not be uploaded:
 - `provider-discovery.json`
 - `ai_account_hub/assets/*.png`
 
-The ignored folders keep only `.gitkeep` placeholders in the public tree. Put
-machine-specific audits, provider probes, private screenshots, exported
-sessions, and temporary schemas under `local-docs/` instead of committing them.
+These folders live only on the maintainer's machine and are not shipped — the
+public tree carries no placeholder for them. Put machine-specific audits,
+provider probes, private screenshots, exported sessions, and temporary schemas
+under `local-docs/` (created locally) instead of committing them.
 
 ## Before Publishing
 

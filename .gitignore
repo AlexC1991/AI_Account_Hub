@@ -52,23 +52,15 @@ provider-discovery.json
 /blob_storage/
 /Shared Dictionary/
 
-# Runtime QA captures and generated provider icon cache.
-outputs/ai-hub-calendar-gui/qa-*
-outputs/ai-hub-calendar-gui/assets/*.png
-!outputs/ai-hub-calendar-gui/assets/.gitkeep
+# Generated provider icon cache (the folder placeholder itself is tracked).
+ai_account_hub/assets/*.png
+!ai_account_hub/assets/.gitkeep
 
-# Public documentation belongs in Docs/. On Windows, Docs/ and docs/ are the
-# same path, so private notes use local-docs/ instead of lowercase docs/.
-local-docs/**
-!local-docs/.gitkeep
-!local-docs/**/
-!local-docs/**/.gitkeep
-
-# Local research/schemas/probes. The release should only keep the placeholder.
-work/*
-!work/.gitkeep
-
-# Tests are kept local, not shipped in the public repo.
+# Local-only, never shipped in the public repo: private notes (local-docs/),
+# research/schemas/probes (work/), and the test suite. Folders stay on the
+# maintainer's machine.
+/local-docs/
+/work/
 /tests/
 /conftest.py
 test_*.py
