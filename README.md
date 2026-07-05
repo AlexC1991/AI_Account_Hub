@@ -57,7 +57,8 @@ Requirements:
 
 - Windows 10 or newer
 - Python 3.10 or newer
-- PySide6 6.8 or newer (the launcher installs it from `requirements.txt`)
+- Python packages from `requirements.txt` (the launcher installs them when
+  needed)
 - Node.js when Codex account-limit probing is required
 - Any provider apps or CLIs you want to use; missing providers do not prevent startup
 

@@ -27,10 +27,14 @@ import sqlite3
 import subprocess
 import sys
 import threading
-import tomllib
 import webbrowser
 from pathlib import Path
 from urllib.parse import urlparse
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 uses the tomli backport.
+    import tomli as tomllib
 
 MODULE_DIR = Path(__file__).resolve().parent
 if str(MODULE_DIR) not in sys.path:

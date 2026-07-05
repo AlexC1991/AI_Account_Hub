@@ -19,9 +19,9 @@ Start-AI-Account-Hub.bat
 ```
 
 Run that single launcher from the repository root. It checks Python, installs
-the declared PySide6 dependency when needed, refreshes provider discovery, and
-then opens this app. For development, `py -3 outputs\ai-hub-qt\main.py` starts
-the same entry point.
+the declared Python package requirements when needed, refreshes provider
+discovery, and then opens this app. For development,
+`py -3 outputs\ai-hub-qt\main.py` starts the same entry point.
 
 ## Architecture
 
