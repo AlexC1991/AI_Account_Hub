@@ -222,9 +222,10 @@ python -m compileall -q ai_account_hub
 python -m pytest -q
 ```
 
-The Qt front-end lives in `ai_account_hub\ui\` (see the package `README.md`).
-The tests live in `tests\` and use Qt's offscreen platform, so they do not
-require a visible window.
+The Qt front-end lives in `ai_account_hub\ui\`; the package layout and internals
+are documented in [`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md). The tests live
+in `tests\` and use Qt's offscreen platform, so they do not require a visible
+window.
 
 ## Porting
 
