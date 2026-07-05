@@ -52,9 +52,8 @@ provider-discovery.json
 /blob_storage/
 /Shared Dictionary/
 
-# Generated provider icon cache (the folder placeholder itself is tracked).
-ai_account_hub/assets/*.png
-!ai_account_hub/assets/.gitkeep
+# (The runtime icon cache lives under ~/.codex-account-launcher, already ignored;
+# the bundled provider icons in ai_account_hub/assets/ are tracked on purpose.)
 
 # Local-only, never shipped in the public repo: private notes (local-docs/),
 # research/schemas/probes (work/), and the test suite. Folders stay on the
