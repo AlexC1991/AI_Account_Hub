@@ -62,12 +62,19 @@ More images live in [`screenshots/`](screenshots/). Use **Help → View demo
 - Account dashboard with ready, login-needed, error, and not-ready states.
 - Calendar view for usage history and weekly reset markers when providers expose enough data.
 - Combined visible-account stats for weekly and session capacity.
+- OpenAI/Codex reset-credit visibility and reset action when the provider
+  exposes one for the selected account.
 - Per-provider account-setup guides in **Help → Account setup** (Claude Code, Codex, Cursor, Antigravity).
 - Account actions for desktop, CLI, login, status, doctor, online links, refresh, and local profile folders.
-- A native-passthrough Coding workbench (reads/renders real provider sessions) — **currently in development and disabled in the UI**; the Accounts dashboard is the supported surface for this release.
 - Claude Code profiles that keep CLI authentication and captured Desktop
   sessions isolated per paid account.
 - Runtime icon discovery from installed provider apps, with optional environment overrides.
+
+## Release Status
+
+The Accounts dashboard is the supported public surface for this release. The
+native-passthrough Coding workbench is present in the codebase but disabled in
+the UI until it is complete.
 
 ## Run
 
@@ -135,7 +142,7 @@ The machine-local result is written atomically to:
 %USERPROFILE%\.codex-account-launcher\provider-discovery.json
 ```
 
-The report contains installation paths, discovery sources, versions, and warnings. It does not read or serialize provider credentials, cookies, refresh tokens, or API keys. Open it from **Help > Open provider discovery report**, or run:
+The report contains installation paths, discovery sources, versions, and warnings. It does not read or serialize provider credentials, cookies, refresh tokens, or API keys. To regenerate it manually, run:
 
 ```bat
 py -3 outputs\ai-hub-calendar-gui\provider_discovery.py --write-report
@@ -189,24 +196,12 @@ Provider icon files are discovered at runtime. You can override them with:
 
 Some providers do not expose all quota data locally. In those cases the app shows an honest state such as "not exposed by Cursor CLI" or "not reliably exposed yet" instead of fabricating a percentage.
 
-See [Claude Account Setup](Docs/CLAUDE_ACCOUNT_SETUP.md) for the complete
-two-login paid-account flow, multi-account switching, and recovery guidance.
-
-Choose **Claude Code (paid)** for Claude accounts. First use **Login** to
-authenticate the account's isolated Claude Code CLI profile, then use
-**Desktop Login** to capture the matching Claude Desktop session. The account
-email is an optional local label because Claude Desktop does not expose it
-through a stable local interface.
-
-The normal login watcher captures the session automatically. If the user
-selects another Claude account before that timer finishes, the switch flow
-first stops Claude, verifies and saves the pending login, updates its card to
-Ready, and only then restores the requested account.
-
-Switch accounts through the Hub instead of Claude's in-app **Log out** command.
-The Hub closes and swaps local profile state without asking Claude to revoke the
-current server session. If Claude revokes a session, that profile must complete
-Desktop Login again.
+For Claude, see [Claude Account Setup](Docs/CLAUDE_ACCOUNT_SETUP.md). The short
+version: choose **Claude Code (paid)**, use **Login** for the isolated Claude
+Code CLI profile, then use **Desktop Login** to capture the matching Claude
+Desktop session when desktop switching is needed. Switch accounts through the
+Hub instead of Claude's in-app **Log out** command; provider logout can revoke
+the saved session and require Desktop Login again.
 
 Antigravity structured turns require a healthy standalone `agy` command. If only a broken shim is found, the app opens the native Antigravity desktop fallback and reports the CLI state in the UI.
 
