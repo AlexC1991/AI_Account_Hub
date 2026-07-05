@@ -9,7 +9,7 @@ The former Tk UI has been retired. Its reusable provider and account logic was
 extracted into the Tk-free `../ai-hub-calendar-gui/hub_core.py`; transport,
 discovery, permission, and history modules remain beside that shared core.
 
-The public paid/free Claude enrollment guide is available from **Help > Claude
+The public paid Claude enrollment guide is available from **Help > Claude
 account setup** and at `../../Docs/CLAUDE_ACCOUNT_SETUP.md`.
 
 ## Run

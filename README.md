@@ -5,8 +5,9 @@ AI Account Hub is a Windows desktop GUI for managing multiple AI coding accounts
 The app keeps provider behavior owned by the official tools:
 
 - Codex uses the Codex desktop/app-server or CLI profile state.
-- Paid Claude accounts use Claude Code profiles, with separate official logins
-  for Claude Code CLI and Claude Desktop.
+- Paid Claude accounts use Claude Code profiles. Use **Login** for the
+  account's Claude Code CLI profile, then **Desktop Login** only when you want
+  the same account captured for Claude Desktop switching.
 - Cursor uses Cursor Desktop and Cursor Agent when installed.
 - Antigravity uses the installed Antigravity desktop app and a healthy standalone `agy` CLI when exposed.
 
