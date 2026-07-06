@@ -460,11 +460,6 @@ def claude_desktop_only(profile: dict) -> bool:
     return provider_key(profile) == "claude" and claude_profile_type(profile) == "desktop"
 
 
-def coding_capable(profile: dict) -> bool:
-    """Whether the profile can be handed to a native coding harness."""
-    return not claude_desktop_only(profile)
-
-
 def provider_label(profile: dict) -> str:
     provider = provider_key(profile)
     if provider == "claude" and claude_desktop_only(profile):

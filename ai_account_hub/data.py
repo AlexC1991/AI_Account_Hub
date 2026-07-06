@@ -109,10 +109,6 @@ def account_state(profile: dict) -> str:
     return L.effective_state(profile)
 
 
-def coding_capable(profile: dict) -> bool:
-    return L.coding_capable(profile)
-
-
 def claude_desktop_only(profile: dict) -> bool:
     return L.claude_desktop_only(profile)
 
