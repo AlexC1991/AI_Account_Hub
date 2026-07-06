@@ -96,12 +96,15 @@ Start-AI-Account-Hub.bat
 Or run it directly:
 
 ```bat
-py -3 outputs\ai-hub-qt\main.py
+py -3 main.py
 ```
 
-The GUI is a PySide6 (Qt) desktop app (`outputs\ai-hub-qt\`). Its provider
-logic lives in the shared, Tk-free backend `outputs\ai-hub-calendar-gui\hub_core.py`;
-`native_harness.py` and `provider_discovery.py` sit alongside it.
+(equivalent to `py -3 -m ai_account_hub`.)
+
+The app is the `ai_account_hub` package: the PySide6 (Qt) front-end is in
+`ai_account_hub\ui\`, and the shared, Tk-free backend is in `ai_account_hub\core\`
+(`hub_core.py`, `provider_discovery.py`). Native provider transports live in
+`ai_account_hub\harness\`.
 
 ## Platform support
 
@@ -111,7 +114,7 @@ title bar, desktop/process control, some state readers, and the Windows-only
 browser cookie-seeding still need per-OS adapters before macOS/Linux can be
 called supported. The full, current porting plan — including the Windows-specific
 code inventory and a Windows→macOS→Linux path-mapping table — is in
-[`Docs/PORTING_MACOS_LINUX.md`](Docs/PORTING_MACOS_LINUX.md).
+[`docs/PORTING_MACOS_LINUX.md`](docs/PORTING_MACOS_LINUX.md).
 
 ## Provider Discovery
 
@@ -145,7 +148,7 @@ The machine-local result is written atomically to:
 The report contains installation paths, discovery sources, versions, and warnings. It does not read or serialize provider credentials, cookies, refresh tokens, or API keys. To regenerate it manually, run:
 
 ```bat
-py -3 outputs\ai-hub-calendar-gui\provider_discovery.py --write-report
+py -3 ai_account_hub\core\provider_discovery.py --write-report
 ```
 
 ### Path Overrides
@@ -196,7 +199,7 @@ Provider icon files are discovered at runtime. You can override them with:
 
 Some providers do not expose all quota data locally. In those cases the app shows an honest state such as "not exposed by Cursor CLI" or "not reliably exposed yet" instead of fabricating a percentage.
 
-For Claude, see [Claude Account Setup](Docs/CLAUDE_ACCOUNT_SETUP.md). The short
+For Claude, see [Claude Account Setup](docs/CLAUDE_ACCOUNT_SETUP.md). The short
 version: choose **Claude Code (paid)**, use **Login** for the isolated Claude
 Code CLI profile, then use **Desktop Login** to capture the matching Claude
 Desktop session when desktop switching is needed. Switch accounts through the
@@ -215,16 +218,15 @@ Hub or use **Reload** to run the same clean scan again.
 Useful checks:
 
 ```bat
-python -m compileall -q outputs\ai-hub-calendar-gui outputs\ai-hub-qt
-python -m pytest outputs\ai-hub-calendar-gui outputs\ai-hub-qt -q
+python -m compileall -q ai_account_hub
 ```
 
-The Qt front-end lives in `outputs\ai-hub-qt\` (see its own `README.md`).
-Its UI tests use Qt's offscreen platform and do not require a visible window.
+The Qt front-end lives in `ai_account_hub\ui\`; the package layout and internals
+are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Porting
 
-This repository is Windows-first today. See [Docs/PROVIDER_DISCOVERY.md](Docs/PROVIDER_DISCOVERY.md) for the discovery contract and [Docs/PORTING_MACOS_LINUX.md](Docs/PORTING_MACOS_LINUX.md) for macOS/Linux contributor instructions.
+This repository is Windows-first today. See [docs/PROVIDER_DISCOVERY.md](docs/PROVIDER_DISCOVERY.md) for the discovery contract and [docs/PORTING_MACOS_LINUX.md](docs/PORTING_MACOS_LINUX.md) for macOS/Linux contributor instructions.
 
 ## License
 

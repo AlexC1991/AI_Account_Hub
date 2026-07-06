@@ -52,30 +52,23 @@ provider-discovery.json
 /blob_storage/
 /Shared Dictionary/
 
-# Runtime QA captures and generated provider icon cache.
-outputs/ai-hub-calendar-gui/qa-*
-outputs/ai-hub-calendar-gui/assets/*.png
-!outputs/ai-hub-calendar-gui/assets/.gitkeep
+# (The runtime icon cache lives under ~/.codex-account-launcher, already ignored;
+# the bundled provider icons in ai_account_hub/assets/ are tracked on purpose.)
 
-# Public documentation belongs in Docs/. On Windows, Docs/ and docs/ are the
-# same path, so private notes use local-docs/ instead of lowercase docs/.
-local-docs/**
-!local-docs/.gitkeep
-!local-docs/**/
-!local-docs/**/.gitkeep
+# Local-only, never shipped in the public repo: private notes (local-docs/),
+# research/schemas/probes (work/), and the test suite. Folders stay on the
+# maintainer's machine.
+/local-docs/
+/work/
+/tests/
+/conftest.py
+test_*.py
+**/test_*.py
 
-# Local research/schemas/probes. The release should only keep the placeholder.
-work/*
-!work/.gitkeep
+# Parked/disabled subsystem: the native "Coding" passthrough (transports,
+# history readers, coding view, permission bridge). Kept locally for reference
+# but not part of the shipped Accounts app. See _disabled/README.md.
+/_disabled/
 
-# The maintained test suite is public. Ad-hoc probes belong under ignored
-# local-docs/ or work/ instead of using a broad test_*.py exclusion.
-
-# Public docs live at Docs/*.md; the private notes subdir stays local.
-/Docs/private/
-
-# Design/prototype launchers and other stray .bat/.cmd — only the top-level
-# Start-AI-Account-Hub.bat launcher ships.
-outputs/**/*.bat
-outputs/**/open-*.bat
-outputs/runcodex.bat
+# Public docs live at docs/*.md; the private notes subdir stays local.
+/docs/private/

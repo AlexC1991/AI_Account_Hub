@@ -5,11 +5,12 @@ rem Always run relative to this checkout so the launcher also works from a
 rem shortcut, Explorer, another drive, or a folder containing spaces.
 cd /d "%~dp0"
 
-rem AI Account Hub now runs on the PySide6 / Qt front-end. The old Tkinter UI
-rem was retired; its logic lives in outputs\ai-hub-calendar-gui\hub_core.py as a
-rem shared, Tk-free backend that the Qt app imports.
-set "APP=%~dp0outputs\ai-hub-qt\main.py"
-set "DISCOVERY=%~dp0outputs\ai-hub-calendar-gui\provider_discovery.py"
+rem AI Account Hub runs on the PySide6 / Qt front-end. The app is the
+rem ai_account_hub package: the UI lives in ai_account_hub\ui\ and the shared,
+rem Tk-free backend in ai_account_hub\core\ (hub_core.py). main.py is a thin
+rem launcher equivalent to "python -m ai_account_hub".
+set "APP=%~dp0main.py"
+set "DISCOVERY=%~dp0ai_account_hub\core\provider_discovery.py"
 set "REQUIREMENTS=%~dp0requirements.txt"
 set "AI_HUB_DISCOVERY_BOOTSTRAPPED="
 
