@@ -65,5 +65,10 @@ provider-discovery.json
 test_*.py
 **/test_*.py
 
+# Parked/disabled subsystem: the native "Coding" passthrough (transports,
+# history readers, coding view, permission bridge). Kept locally for reference
+# but not part of the shipped Accounts app. See _disabled/README.md.
+/_disabled/
+
 # Public docs live at docs/*.md; the private notes subdir stays local.
 /docs/private/

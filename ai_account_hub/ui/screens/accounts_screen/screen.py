@@ -24,7 +24,6 @@ from ai_account_hub.ui.screens.accounts_screen.actions import _ActionsMixin
 
 
 class AccountsScreen(_DataMixin, _ActionsMixin, QWidget):
-    use_in_coding_requested = Signal(str)  # profile id
     profiles_changed = Signal(list)
     activity = Signal(str)
     refreshing = Signal(bool)  # True when a Refresh-all run starts, False when it ends
@@ -81,14 +80,6 @@ class AccountsScreen(_DataMixin, _ActionsMixin, QWidget):
         except Exception:
             pass
         return ""
-
-    def set_coding_active(self, pid: str) -> None:
-        """Track which account is active in the Coding workbench (any provider)."""
-        pid = pid or None
-        if pid == self._coding_active_pid:
-            return
-        self._coding_active_pid = pid
-        self._apply_desktop_active()
 
     def _apply_desktop_active(self) -> None:
         """Mark exactly one 'In use' account. The account loaded in the Coding
@@ -308,7 +299,7 @@ class AccountsScreen(_DataMixin, _ActionsMixin, QWidget):
         # shown, and they are packed (no empty grid cells) so the rail never
         # looks half-finished. Rebuilt per selected account in _rebuild_actions.
         self._action_groups = (
-            ("SESSION", [("Coding", "ghost", "use_in_coding"), ("Open Desktop", "primary", "desktop"), ("Open CLI", "ghost", "cli")]),
+            ("SESSION", [("Open Desktop", "primary", "desktop"), ("Open CLI", "ghost", "cli")]),
             ("AUTH", [("Login", "ghost", "login"), ("Device", "ghost", "device"), ("Logout", "ghost", "logout"),
                       ("Desktop Login", "ghost", "desktop_login"),
                       ("Status", "ghost", "status"), ("Doctor", "ghost", "doctor"), ("Refresh", "success", "refresh")]),

@@ -560,3 +560,29 @@ def antigravity_local_account_status() -> dict:
     }
 
 
+
+
+def locate_cursor_agent() -> str:
+    """Locate the separate Cursor Agent CLI (cursor-agent / agent)."""
+    local_appdata = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+    candidates = [
+        shutil.which("cursor-agent.exe"),
+        shutil.which("cursor-agent.cmd"),
+        shutil.which("cursor-agent"),
+        shutil.which("agent.exe"),
+        shutil.which("agent.cmd"),
+        shutil.which("agent"),
+        str(local_appdata / "cursor-agent" / "cursor-agent.cmd"),
+        str(local_appdata / "cursor-agent" / "agent.cmd"),
+        str(local_appdata / "cursor-agent" / "cursor-agent.exe"),
+        str(Path.home() / ".local" / "bin" / "cursor-agent.exe"),
+        str(Path.home() / ".local" / "bin" / "cursor-agent"),
+        str(Path.home() / ".local" / "bin" / "agent.exe"),
+        str(Path.home() / ".local" / "bin" / "agent"),
+        str(Path.home() / ".cursor" / "bin" / "cursor-agent.exe"),
+        str(Path.home() / ".cursor" / "bin" / "agent.exe"),
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return str(Path(candidate))
+    return ""

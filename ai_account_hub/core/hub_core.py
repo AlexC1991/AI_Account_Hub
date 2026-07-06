@@ -38,7 +38,6 @@ except ModuleNotFoundError:  # Python 3.10 uses the tomli backport.
 
 MODULE_DIR = Path(__file__).resolve().parent
 PACKAGE_DIR = MODULE_DIR.parent  # the ai_account_hub package root
-CLAUDE_PERMISSION_BRIDGE_PATH = PACKAGE_DIR / "harness" / "claude_permission_bridge.py"
 
 from .provider_discovery import (  # noqa: E402
     default_report_path,
@@ -48,37 +47,6 @@ from .provider_discovery import (  # noqa: E402
 )
 
 _logger = logging.getLogger(__name__)
-
-from ..harness.native_harness import (  # noqa: E402
-    AntigravityTransport,
-    CodexTransport,
-    NativeTransportError,
-    StreamJsonTransport,
-    claude_content_image_refs,
-    claude_tool_activity_fields,
-    claude_tool_result_fields,
-    claude_tool_result_text,
-    clean_windows_path_text,
-    compact_history_text,
-    codex_thread_messages,
-    discover_codex_file_threads,
-    discover_antigravity_threads,
-    discover_claude_threads,
-    discover_cursor_threads,
-    extract_message_text,
-    load_codex_saved_workspaces,
-    load_thread_refs,
-    locate_cursor_agent,
-    normalized_path_key,
-    read_antigravity_thread,
-    read_claude_thread,
-    read_codex_session_file,
-    read_cursor_thread,
-    strip_ansi,
-    summarize_codex_item,
-    thread_ref,
-    upsert_thread_ref,
-)
 
 
 from .palette import *  # noqa: F401,F403 (theme/palette domain)
@@ -634,6 +602,33 @@ def clip_text(value: object, max_chars: int) -> str:
     if max_chars <= 1 or len(text) <= max_chars:
         return text
     return text[: max(0, max_chars - 3)].rstrip() + "..."
+
+
+def calendar_reset_chip_label(marker: object) -> str:
+    """Short 'Account reset' chip label for a usage-calendar reset marker."""
+    text = str(marker or "").strip()
+    estimated = "estimate" in text.lower()
+    account = re.split(r"\s+weekly\s+reset", text, maxsplit=1, flags=re.IGNORECASE)[0]
+    account = re.sub(r"\b(claude\s+code|antigravity|codex|cursor)\b", "", account, flags=re.IGNORECASE)
+    account = re.sub(r"\baccount\b", "", account, flags=re.IGNORECASE)
+    account = re.sub(r"\s+", " ", account).strip()
+    if not account:
+        lowered = text.lower()
+        account = next(
+            (
+                label
+                for key, label in (
+                    ("claude", "Claude"),
+                    ("codex", "Codex"),
+                    ("cursor", "Cursor"),
+                    ("antigravity", "Antigravity"),
+                )
+                if key in lowered
+            ),
+            "Account",
+        )
+    suffix = "reset estimate" if estimated else "reset"
+    return f"{clip_text(account, 12)} {suffix}"
 
 
 def clip_middle_text(value: object, max_chars: int) -> str:

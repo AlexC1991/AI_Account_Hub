@@ -467,20 +467,20 @@ class _DataMixin:
             }
         return {
             "codex": {
-                "use_in_coding", "desktop", "cli", "login", "device", "status",
+                "desktop", "cli", "login", "device", "status",
                 "doctor", "refresh", "online", "dry_run", "restore", "use_reset",
                 "set_timer", "clear_timer", "home", "seed",
             },
             "claude": {
-                "use_in_coding", "desktop", "cli", "login", "status", "doctor",
+                "desktop", "cli", "login", "status", "doctor",
                 "refresh", "online", "home", "desktop_login",
             },
             "cursor": {
-                "use_in_coding", "desktop", "cli", "login", "logout", "status",
+                "desktop", "cli", "login", "logout", "status",
                 "doctor", "refresh", "online", "home",
             },
             "antigravity": {
-                "use_in_coding", "desktop", "cli", "login", "status", "doctor",
+                "desktop", "cli", "login", "status", "doctor",
                 "refresh", "online", "home",
             },
         }.get(provider, {"refresh", "online", "home"})

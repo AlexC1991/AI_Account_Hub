@@ -22,7 +22,6 @@ from ai_account_hub.ui.theme import ThemeManager
 from ai_account_hub.ui.tokens import DEFAULT_THEME, THEMES
 from ai_account_hub.ui.widgets import NetworkLogo, SegmentedSlider, Spinner, TitleBar, make_button, network_icon
 from ai_account_hub.ui.screens.accounts_screen import AccountsScreen
-from ai_account_hub.ui.screens.coding_screen import CodingScreen
 
 
 class MainWindow(QWidget):
@@ -42,7 +41,7 @@ class MainWindow(QWidget):
             str(self.settings.get("appearanceMode") or "dark"),
         )
         self.setWindowIcon(network_icon(self.theme.tokens["accent"]))
-        self._active = "coding"
+        self._active = "accounts"
         self._auto_on = bool(self.settings.get("autoRefreshEnabled", True))
         self._auto_minutes = max(1, int(self.settings.get("autoRefreshMinutes", 10) or 10))
         self._next_auto_refresh = dt.datetime.now() + dt.timedelta(minutes=1)
@@ -51,13 +50,11 @@ class MainWindow(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Screens are created first so the header can reference them when
-        # wiring its action buttons.
+        # The Accounts dashboard is the single screen. (The native Coding
+        # workbench is parked out of the shipped tree until it is finished.)
         self.stack = QStackedWidget()
         self.accounts = AccountsScreen(self.theme)
-        self.coding = CodingScreen(self.theme)
-        self.stack.addWidget(self.coding)     # index 0
-        self.stack.addWidget(self.accounts)   # index 1
+        self.stack.addWidget(self.accounts)   # index 0
 
         self.menu_bar = self._build_menu_bar()
         self.titlebar = TitleBar(self, self.theme.tokens["accent"], self.menu_bar)
@@ -67,14 +64,10 @@ class MainWindow(QWidget):
 
         profiles = data.load_profiles()
         self.accounts.set_profiles(profiles)
-        self.coding.active_account_changed.connect(self.accounts.set_coding_active)
-        self.coding.set_profiles(profiles)
 
         self.theme.changed.connect(lambda _n: self.titlebar.set_accent(self.theme.tokens["accent"]))
         self.theme.changed.connect(lambda _n: self._logo.set_accent(self.theme.tokens["accent"]))
         self.theme.changed.connect(lambda _n: self.setWindowIcon(network_icon(self.theme.tokens["accent"])))
-        self.accounts.use_in_coding_requested.connect(self._hand_to_coding)
-        self.accounts.profiles_changed.connect(self._profiles_changed)
         self.accounts.activity.connect(self._set_status)
         self._select_section("accounts")
         self._clock = QTimer(self)
@@ -173,7 +166,6 @@ class MainWindow(QWidget):
         self.setWindowIcon(network_icon(self.theme.tokens["accent"]))
         self._refresh_spin.set_color(self.theme.tokens["accent"])
         self.accounts.apply_theme()
-        self.coding.apply_theme()
 
     def _open_readme(self) -> None:
         target = Path(__file__).resolve().parents[2] / "README.md"
@@ -227,10 +219,6 @@ class MainWindow(QWidget):
     def _account_action(self, key: str) -> None:
         self._select_section("accounts")
         self.accounts.run_action(key)
-
-    def _hand_to_coding(self, pid: str) -> None:
-        self.coding.set_active_account(pid)
-        self._select_section("coding")
 
     def _build_header(self) -> QWidget:
         header = QWidget()
@@ -314,8 +302,8 @@ class MainWindow(QWidget):
         if key == "coding":
             key = "accounts"
         self._active = key
-        # instant, stateful switch — no rebuild
-        self.stack.setCurrentIndex(0 if key == "coding" else 1)
+        # instant, stateful switch — no rebuild (Accounts is the only screen)
+        self.stack.setCurrentIndex(0)
         self._seg.set_active(key)  # emit=False → no recursion back into this slot
 
     def _auto_label(self) -> str:
@@ -342,23 +330,17 @@ class MainWindow(QWidget):
     def _reload(self) -> None:
         profiles = data.load_profiles()
         self.accounts.set_profiles(profiles)
-        self.coding.set_profiles(profiles)
-
-    def _profiles_changed(self, profiles: list) -> None:
-        self.coding.set_profiles(list(profiles))
 
     def _set_status(self, text: str) -> None:
         self._status_text = str(text)
 
     def _tick(self) -> None:
         self.accounts.tick()
-        self.coding.tick()
         if self._auto_on and dt.datetime.now() >= self._next_auto_refresh:
             self._next_auto_refresh = dt.datetime.now() + dt.timedelta(minutes=self._auto_minutes)
             self.accounts.refresh_all(reason="auto")
 
     def closeEvent(self, event) -> None:
         self._clock.stop()
-        self.coding.close()
         self.accounts.close_workers()
         super().closeEvent(event)

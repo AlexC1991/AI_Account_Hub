@@ -131,17 +131,6 @@ class _ActionsMixin:
             return
 
         # fast, inline actions
-        if key == "use_in_coding":
-            if not data.coding_capable(profile):
-                QMessageBox.information(
-                    self,
-                    "Desktop-only account",
-                    "This account can be switched in Claude Desktop, but it cannot be used by Claude Code.",
-                )
-                return
-            self.use_in_coding_requested.emit(self._selected or "")
-            self._append_log(f"Handed {profile.get('name')} to Coding.")
-            return
         if key == "set_timer":
             until = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=5)
             profile["cooldownUntilUtc"] = until.isoformat()

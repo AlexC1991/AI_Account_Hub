@@ -6,7 +6,6 @@ Package layout:
 - ``ai_account_hub.ui``      — the PySide6 (Qt) front-end (windows, screens, widgets).
 - ``ai_account_hub.core``    — the Tk-free backend (provider probes, limits, usage
   history, discovery, launch/browser helpers). Re-exports ``core.hub_core``.
-- ``ai_account_hub.harness`` — native provider transports and history readers.
 - ``ai_account_hub.data``    — the UI-facing data layer bridging UI and core.
 - ``ai_account_hub.engine``  — the shared backend engine (refresh/save/history).
 """
