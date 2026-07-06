@@ -149,6 +149,46 @@ PROFILE_DEFAULTS = {
 }
 
 
+def _atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
+    """Write ``text`` so ``path`` is never left partially written.
+
+    Writes to a temp file in the same directory, flushes + fsyncs it, then
+    atomically ``os.replace``s it onto the target. If the process dies mid-write
+    only the temp file is affected; the existing file stays intact. This is what
+    keeps a user's profiles.json from being truncated on a crash/power loss.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+    try:
+        with tmp.open("w", encoding=encoding) as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass  # already renamed away on success, or never created
+
+
+def _preserve_corrupt_file(path: Path) -> None:
+    """Move an unreadable file aside instead of silently destroying it.
+
+    If profiles.json ever fails to parse we would otherwise overwrite it with an
+    empty default, losing the user's accounts. Renaming it to a timestamped
+    ``.corrupt-*`` sibling keeps their data recoverable.
+    """
+    try:
+        if path.exists() and path.stat().st_size > 0:
+            stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+            backup = path.with_name(f"{path.name}.corrupt-{stamp}")
+            path.replace(backup)
+            _logger.warning("Preserved unreadable %s as %s", path.name, backup.name)
+    except OSError:
+        _logger.debug("Could not preserve corrupt file %s", path, exc_info=True)
+
+
 def load_settings() -> dict:
     if not SETTINGS_FILE.exists():
         return {"theme": "Midnight Slate", "autoRefreshEnabled": True, "autoRefreshMinutes": 10, "sortMode": "Manual", "cardTemplate": "Balanced"}
@@ -171,8 +211,7 @@ def load_settings() -> dict:
 
 
 def save_settings(settings: dict) -> None:
-    LAUNCHER_ROOT.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    _atomic_write_text(SETTINGS_FILE, json.dumps(settings, indent=2))
 
 
 def compact_number(value: int | float | None) -> str:
@@ -980,6 +1019,8 @@ def load_profiles() -> list[dict]:
         with PROFILES_FILE.open("r", encoding="utf-8-sig") as handle:
             raw = json.load(handle)
     except (OSError, json.JSONDecodeError):
+        # Don't silently destroy a file we can't parse — keep it recoverable.
+        _preserve_corrupt_file(PROFILES_FILE)
         profiles = default_profiles()
         save_profiles(profiles)
         return profiles
@@ -988,10 +1029,8 @@ def load_profiles() -> list[dict]:
 
 
 def save_profiles(profiles: list[dict]) -> None:
-    LAUNCHER_ROOT.mkdir(parents=True, exist_ok=True)
     cleaned = [normalize_profile(profile, index) for index, profile in enumerate(profiles)]
-    with PROFILES_FILE.open("w", encoding="utf-8") as handle:
-        json.dump(cleaned, handle, indent=2)
+    _atomic_write_text(PROFILES_FILE, json.dumps(cleaned, indent=2))
 
 
 def locate_claude_desktop_path() -> str:
