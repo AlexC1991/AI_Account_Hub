@@ -65,11 +65,5 @@ provider-discovery.json
 test_*.py
 **/test_*.py
 
-# Public docs live at Docs/*.md; the private notes subdir stays local.
-/Docs/private/
-
-# Design/prototype launchers and other stray .bat/.cmd — only the top-level
-# Start-AI-Account-Hub.bat launcher ships.
-outputs/**/*.bat
-outputs/**/open-*.bat
-outputs/runcodex.bat
+# Public docs live at docs/*.md; the private notes subdir stays local.
+/docs/private/

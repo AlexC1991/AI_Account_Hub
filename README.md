@@ -114,7 +114,7 @@ title bar, desktop/process control, some state readers, and the Windows-only
 browser cookie-seeding still need per-OS adapters before macOS/Linux can be
 called supported. The full, current porting plan — including the Windows-specific
 code inventory and a Windows→macOS→Linux path-mapping table — is in
-[`Docs/PORTING_MACOS_LINUX.md`](Docs/PORTING_MACOS_LINUX.md).
+[`docs/PORTING_MACOS_LINUX.md`](docs/PORTING_MACOS_LINUX.md).
 
 ## Provider Discovery
 
@@ -199,7 +199,7 @@ Provider icon files are discovered at runtime. You can override them with:
 
 Some providers do not expose all quota data locally. In those cases the app shows an honest state such as "not exposed by Cursor CLI" or "not reliably exposed yet" instead of fabricating a percentage.
 
-For Claude, see [Claude Account Setup](Docs/CLAUDE_ACCOUNT_SETUP.md). The short
+For Claude, see [Claude Account Setup](docs/CLAUDE_ACCOUNT_SETUP.md). The short
 version: choose **Claude Code (paid)**, use **Login** for the isolated Claude
 Code CLI profile, then use **Desktop Login** to capture the matching Claude
 Desktop session when desktop switching is needed. Switch accounts through the
@@ -222,11 +222,11 @@ python -m compileall -q ai_account_hub
 ```
 
 The Qt front-end lives in `ai_account_hub\ui\`; the package layout and internals
-are documented in [`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md).
+are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Porting
 
-This repository is Windows-first today. See [Docs/PROVIDER_DISCOVERY.md](Docs/PROVIDER_DISCOVERY.md) for the discovery contract and [Docs/PORTING_MACOS_LINUX.md](Docs/PORTING_MACOS_LINUX.md) for macOS/Linux contributor instructions.
+This repository is Windows-first today. See [docs/PROVIDER_DISCOVERY.md](docs/PROVIDER_DISCOVERY.md) for the discovery contract and [docs/PORTING_MACOS_LINUX.md](docs/PORTING_MACOS_LINUX.md) for macOS/Linux contributor instructions.
 
 ## License
 

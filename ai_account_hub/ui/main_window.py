@@ -181,8 +181,8 @@ class MainWindow(QWidget):
             os.startfile(str(target))
 
     def _open_setup_doc(self, filename: str) -> None:
-        """Open a per-provider account-setup guide from Docs/ in the OS viewer."""
-        target = Path(__file__).resolve().parents[2] / "Docs" / filename
+        """Open a per-provider account-setup guide from docs/ in the OS viewer."""
+        target = Path(__file__).resolve().parents[2] / "docs" / filename
         if target.is_file():
             os.startfile(str(target))
 
