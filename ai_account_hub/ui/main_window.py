@@ -23,7 +23,7 @@ from ai_account_hub.ui.theme import ThemeManager
 from ai_account_hub.ui.tokens import DEFAULT_THEME, THEMES
 from ai_account_hub.ui.widgets import NetworkLogo, SegmentedSlider, Spinner, TitleBar, make_button, network_icon
 from ai_account_hub.ui.screens.accounts_screen import AccountsScreen
-from ai_account_hub.ui.tray_widget import TrayController
+from ai_account_hub.ui.tray_widget import TrayController, TrayWidgetSettingsDialog
 
 
 class MainWindow(QWidget):
@@ -112,6 +112,7 @@ class MainWindow(QWidget):
         window_menu.addSeparator()
         window_menu.addAction("Minimize", self.showMinimized)
         window_menu.addAction("Show Best Next", self._show_best_next)
+        window_menu.addAction("Widget settings...", self._open_tray_settings)
         window_menu.addAction("Maximize / Restore", self._toggle_maximized)
 
         theme_menu = bar.addMenu("Theme")
@@ -154,13 +155,19 @@ class MainWindow(QWidget):
 
     # ---------- Windows system tray / compact Best Next popup ----------
     def _setup_system_tray(self) -> None:
-        self._tray_controller = TrayController(self, self.theme, self._auto_on)
+        self._tray_controller = TrayController(
+            self,
+            self.theme,
+            self._auto_on,
+            self.settings,
+        )
         self._tray_controller.restore_requested.connect(self._restore_from_tray)
         self._tray_controller.refresh_requested.connect(self._refresh_from_tray)
         self._tray_controller.switch_requested.connect(self._switch_from_tray)
         self._tray_controller.auto_refresh_requested.connect(self._set_auto_refresh)
         self._tray_controller.exit_requested.connect(self.close)
         self._tray_controller.popup_opening.connect(self._sync_tray_profiles)
+        self._tray_controller.settings_requested.connect(self._open_tray_settings)
 
     def _sync_tray_theme(self) -> None:
         icon = network_icon(self.theme.tokens["accent"])
@@ -209,6 +216,20 @@ class MainWindow(QWidget):
     def _show_best_next(self) -> None:
         if self._tray_controller is not None:
             self._tray_controller.show_popup()
+
+    def _open_tray_settings(self) -> None:
+        if self._tray_controller is None:
+            return
+        dialog = TrayWidgetSettingsDialog(
+            self._tray_controller.widget_settings,
+            self,
+        )
+        if not dialog.exec():
+            return
+        selected = dialog.values()
+        self.settings.update(selected)
+        data.save_settings(self.settings)
+        self._tray_controller.apply_widget_settings(selected)
 
     def _restore_from_tray(self) -> None:
         if self._tray_controller is not None:

@@ -5,7 +5,11 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
     QFrame,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -27,6 +31,164 @@ from ai_account_hub.ui.widgets import (
     make_button,
     network_icon,
 )
+
+
+TRAY_SETTING_DEFAULTS = {
+    "trayWidgetWidth": 320,
+    "trayShowWeekly": True,
+    "trayShowSession": True,
+    "trayShowProviderPlan": True,
+    "trayShowRefresh": True,
+    "trayShowDashboard": True,
+    "trayNextAccounts": 2,
+}
+TRAY_WIDGET_WIDTHS = (300, 320, 360)
+
+
+def _setting_bool(value: object, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return default
+
+
+def normalize_tray_settings(raw: dict | None) -> dict:
+    """Return a complete, bounded set of widget preferences."""
+
+    source = raw if isinstance(raw, dict) else {}
+    settings = dict(TRAY_SETTING_DEFAULTS)
+    try:
+        requested_width = int(source.get("trayWidgetWidth", settings["trayWidgetWidth"]))
+    except (TypeError, ValueError):
+        requested_width = settings["trayWidgetWidth"]
+    settings["trayWidgetWidth"] = min(
+        TRAY_WIDGET_WIDTHS,
+        key=lambda width: abs(width - requested_width),
+    )
+
+    for key in (
+        "trayShowWeekly",
+        "trayShowSession",
+        "trayShowProviderPlan",
+        "trayShowRefresh",
+        "trayShowDashboard",
+    ):
+        settings[key] = _setting_bool(source.get(key), settings[key])
+
+    try:
+        next_accounts = int(source.get("trayNextAccounts", settings["trayNextAccounts"]))
+    except (TypeError, ValueError):
+        next_accounts = settings["trayNextAccounts"]
+    settings["trayNextAccounts"] = max(0, min(3, next_accounts))
+    return settings
+
+
+class TrayWidgetSettingsDialog(QDialog):
+    """Small preferences dialog for the information shown in Best Next."""
+
+    def __init__(self, settings: dict | None = None, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("traySettingsDialog")
+        self.setWindowTitle("Widget settings")
+        self.setModal(True)
+        self.setMinimumWidth(380)
+        self._build()
+        self._set_values(normalize_tray_settings(settings))
+
+    def _build(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 16)
+        layout.setSpacing(14)
+
+        title = QLabel("Best Next widget")
+        title.setObjectName("dialogTitle")
+        layout.addWidget(title)
+        note = QLabel("Choose the size and account details shown when the tray widget opens.")
+        note.setObjectName("muted")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        form = QFormLayout()
+        form.setContentsMargins(0, 2, 0, 0)
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(10)
+        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        self.width_combo = QComboBox()
+        self.width_combo.addItem("Compact (300 px)", 300)
+        self.width_combo.addItem("Balanced (320 px)", 320)
+        self.width_combo.addItem("Comfortable (360 px)", 360)
+        form.addRow("Popup width", self.width_combo)
+
+        self.next_combo = QComboBox()
+        self.next_combo.addItem("Hidden", 0)
+        self.next_combo.addItem("1 account", 1)
+        self.next_combo.addItem("2 accounts", 2)
+        self.next_combo.addItem("3 accounts", 3)
+        form.addRow("Next options", self.next_combo)
+        layout.addLayout(form)
+
+        self.provider_plan = QCheckBox("Show provider and plan")
+        self.weekly = QCheckBox("Show weekly limit")
+        self.session = QCheckBox("Show 5-hour limit")
+        self.refresh = QCheckBox("Show Refresh button")
+        self.dashboard = QCheckBox("Show Open dashboard button")
+        for checkbox in (
+            self.provider_plan,
+            self.weekly,
+            self.session,
+            self.refresh,
+            self.dashboard,
+        ):
+            layout.addWidget(checkbox)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+        reset = make_button("Reset defaults", "ghost")
+        reset.clicked.connect(self._reset_defaults)
+        cancel = make_button("Cancel", "ghost")
+        cancel.clicked.connect(self.reject)
+        save = make_button("Save", "primary")
+        save.clicked.connect(self.accept)
+        actions.addWidget(reset)
+        actions.addStretch(1)
+        actions.addWidget(cancel)
+        actions.addWidget(save)
+        layout.addLayout(actions)
+
+    def _set_values(self, settings: dict) -> None:
+        width_index = self.width_combo.findData(settings["trayWidgetWidth"])
+        self.width_combo.setCurrentIndex(max(0, width_index))
+        next_index = self.next_combo.findData(settings["trayNextAccounts"])
+        self.next_combo.setCurrentIndex(max(0, next_index))
+        self.provider_plan.setChecked(settings["trayShowProviderPlan"])
+        self.weekly.setChecked(settings["trayShowWeekly"])
+        self.session.setChecked(settings["trayShowSession"])
+        self.refresh.setChecked(settings["trayShowRefresh"])
+        self.dashboard.setChecked(settings["trayShowDashboard"])
+
+    def _reset_defaults(self) -> None:
+        self._set_values(dict(TRAY_SETTING_DEFAULTS))
+
+    def values(self) -> dict:
+        return normalize_tray_settings(
+            {
+                "trayWidgetWidth": self.width_combo.currentData(),
+                "trayNextAccounts": self.next_combo.currentData(),
+                "trayShowProviderPlan": self.provider_plan.isChecked(),
+                "trayShowWeekly": self.weekly.isChecked(),
+                "trayShowSession": self.session.isChecked(),
+                "trayShowRefresh": self.refresh.isChecked(),
+                "trayShowDashboard": self.dashboard.isChecked(),
+            }
+        )
 
 
 def remaining_capacity(profile: dict) -> tuple[float | None, float | None, float]:
@@ -105,13 +267,18 @@ def _left_text(value: float | None) -> str:
 class _TrayAccountRow(QPushButton):
     selected = Signal(str)
 
-    def __init__(self, profile: dict, in_use_id: str | set[str]) -> None:
+    def __init__(
+        self,
+        profile: dict,
+        in_use_id: str | set[str],
+        show_details: bool = True,
+    ) -> None:
         super().__init__()
         self.profile = profile
         self.pid = data.profile_id(profile)
         self.setObjectName("trayAccountRow")
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(46)
+        self.setFixedHeight(46 if show_details else 38)
 
         row = QHBoxLayout(self)
         row.setContentsMargins(9, 4, 9, 4)
@@ -131,15 +298,16 @@ class _TrayAccountRow(QPushButton):
         copy.setSpacing(1)
         name = ElidedLabel(str(profile.get("name") or "Account"))
         name.setObjectName("trayAccountName")
-        weekly, session, _usable = remaining_capacity(profile)
-        if weekly is None and session is None:
-            detail = f"{data.provider_label(profile)} | {data.account_plan(profile)}"
-        else:
-            detail = f"Week {_left_text(weekly)} | Session {_left_text(session)}"
-        sub = ElidedLabel(detail)
-        sub.setObjectName("faint")
         copy.addWidget(name)
-        copy.addWidget(sub)
+        if show_details:
+            weekly, session, _usable = remaining_capacity(profile)
+            if weekly is None and session is None:
+                detail = f"{data.provider_label(profile)} | {data.account_plan(profile)}"
+            else:
+                detail = f"Week {_left_text(weekly)} | Session {_left_text(session)}"
+            sub = ElidedLabel(detail)
+            sub.setObjectName("faint")
+            copy.addWidget(sub)
         row.addLayout(copy, 1)
 
         status_text, status_kind = _status(profile, in_use_id)
@@ -156,10 +324,11 @@ class BestNextTrayPopup(QWidget):
     dashboard_requested = Signal()
     switch_requested = Signal(str)
 
-    def __init__(self, theme_manager) -> None:
+    def __init__(self, theme_manager, settings: dict | None = None) -> None:
         super().__init__(None, Qt.Popup | Qt.FramelessWindowHint)
         self.setObjectName("trayPopup")
-        self.setFixedWidth(360)
+        self._settings = normalize_tray_settings(settings)
+        self.setFixedWidth(self._settings["trayWidgetWidth"])
         self.setMaximumHeight(370)
         self._tm = theme_manager
         self._profiles: list[dict] = []
@@ -170,6 +339,7 @@ class BestNextTrayPopup(QWidget):
         self._render_signature: tuple = ()
         self._next_rows: list[_TrayAccountRow] = []
         self._build()
+        self.apply_settings(self._settings)
 
     def _build(self) -> None:
         outer = QVBoxLayout(self)
@@ -258,17 +428,19 @@ class BestNextTrayPopup(QWidget):
         body_layout.addWidget(self.next_host)
         outer.addWidget(body)
 
-        footer = QFrame()
-        footer.setObjectName("trayFooter")
-        footer_layout = QHBoxLayout(footer)
+        self.footer = QFrame()
+        self.footer.setObjectName("trayFooter")
+        footer_layout = QHBoxLayout(self.footer)
         footer_layout.setContentsMargins(8, 5, 8, 5)
         footer_layout.setSpacing(7)
         footer_layout.addStretch(1)
-        dashboard = make_button("Open dashboard", "ghost")
-        dashboard.setFixedHeight(28)
-        dashboard.clicked.connect(lambda _checked=False: self.dashboard_requested.emit())
-        footer_layout.addWidget(dashboard)
-        outer.addWidget(footer)
+        self.dashboard_button = make_button("Open dashboard", "ghost")
+        self.dashboard_button.setFixedHeight(28)
+        self.dashboard_button.clicked.connect(
+            lambda _checked=False: self.dashboard_requested.emit()
+        )
+        footer_layout.addWidget(self.dashboard_button)
+        outer.addWidget(self.footer)
 
     def _metric(self, caption: str) -> tuple[QWidget, QLabel, SeverityBar]:
         host = QWidget()
@@ -292,6 +464,24 @@ class BestNextTrayPopup(QWidget):
         available_ids = {data.profile_id(profile) for profile in self._ranked}
         if self._selected_id not in available_ids:
             self._selected_id = data.profile_id(self._ranked[0]) if self._ranked else ""
+        self._render()
+
+    @property
+    def widget_settings(self) -> dict:
+        return dict(self._settings)
+
+    def apply_settings(self, settings: dict | None) -> None:
+        self._settings = normalize_tray_settings(settings)
+        self.setFixedWidth(self._settings["trayWidgetWidth"])
+        self.setMaximumHeight(420 if self._settings["trayNextAccounts"] == 3 else 370)
+        self.refresh_button.setVisible(self._settings["trayShowRefresh"])
+        self.hero_sub.setVisible(self._settings["trayShowProviderPlan"])
+        self.weekly_label.setVisible(self._settings["trayShowWeekly"])
+        self.weekly_bar.setVisible(self._settings["trayShowWeekly"])
+        self.session_label.setVisible(self._settings["trayShowSession"])
+        self.session_bar.setVisible(self._settings["trayShowSession"])
+        self.footer.setVisible(self._settings["trayShowDashboard"])
+        self._render_signature = ()
         self._render()
 
     def select_best(self) -> None:
@@ -400,11 +590,15 @@ class BestNextTrayPopup(QWidget):
         alternatives = [
             profile for profile in self._ranked
             if data.profile_id(profile) != self._selected_id
-        ][:2]
+        ][: self._settings["trayNextAccounts"]]
         self.next_label.setVisible(bool(alternatives))
         self.next_host.setVisible(bool(alternatives))
         for profile in alternatives:
-            row = _TrayAccountRow(profile, self._in_use_ids)
+            row = _TrayAccountRow(
+                profile,
+                self._in_use_ids,
+                show_details=self._settings["trayShowProviderPlan"],
+            )
             row.selected.connect(self._select)
             self._next_rows.append(row)
             self.next_layout.addWidget(row)
@@ -423,11 +617,19 @@ class TrayController(QObject):
     auto_refresh_requested = Signal(bool)
     exit_requested = Signal()
     popup_opening = Signal()
+    settings_requested = Signal()
 
-    def __init__(self, parent: QWidget, theme_manager, auto_refresh: bool) -> None:
+    def __init__(
+        self,
+        parent: QWidget,
+        theme_manager,
+        auto_refresh: bool,
+        widget_settings: dict | None = None,
+    ) -> None:
         super().__init__(parent)
         self._parent = parent
         self._tm = theme_manager
+        self._widget_settings = normalize_tray_settings(widget_settings)
         self.tray: QSystemTrayIcon | None = None
         self.menu: QMenu | None = None
         self.popup: BestNextTrayPopup | None = None
@@ -439,8 +641,12 @@ class TrayController(QObject):
     def available(self) -> bool:
         return self.tray is not None and self.tray.isVisible()
 
+    @property
+    def widget_settings(self) -> dict:
+        return dict(self._widget_settings)
+
     def _build(self, auto_refresh: bool) -> None:
-        self.popup = BestNextTrayPopup(self._tm)
+        self.popup = BestNextTrayPopup(self._tm, self._widget_settings)
         self.popup.dashboard_requested.connect(lambda: self.restore_requested.emit())
         self.popup.refresh_requested.connect(lambda: self.refresh_requested.emit())
         self.popup.switch_requested.connect(lambda pid: self.switch_requested.emit(pid))
@@ -455,6 +661,8 @@ class TrayController(QObject):
         open_action.triggered.connect(lambda _checked=False: self.restore_requested.emit())
         best_action = self.menu.addAction("Show Best Next")
         best_action.triggered.connect(lambda _checked=False: self.show_popup())
+        settings_action = self.menu.addAction("Widget settings...")
+        settings_action.triggered.connect(lambda _checked=False: self._request_settings())
         self.menu.addSeparator()
         refresh_action = self.menu.addAction("Refresh all accounts")
         refresh_action.triggered.connect(lambda _checked=False: self.refresh_requested.emit())
@@ -492,6 +700,13 @@ class TrayController(QObject):
         if self.auto_action is not None:
             self.auto_action.setChecked(bool(enabled))
 
+    def apply_widget_settings(self, settings: dict | None) -> None:
+        self._widget_settings = normalize_tray_settings(settings)
+        if self.popup is not None:
+            self.popup.apply_settings(self._widget_settings)
+            if self.popup.isVisible():
+                self._position_popup()
+
     def tick(self) -> None:
         if self.popup is not None:
             self.popup.tick()
@@ -518,6 +733,10 @@ class TrayController(QObject):
     def hide_popup(self) -> None:
         if self.popup is not None:
             self.popup.hide()
+
+    def _request_settings(self) -> None:
+        self.hide_popup()
+        self.settings_requested.emit()
 
     def minimize(self, window: QWidget) -> bool:
         if not self.available:

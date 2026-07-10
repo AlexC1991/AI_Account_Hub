@@ -155,6 +155,8 @@ def build_qss(t: dict[str, str]) -> str:
     QWidget#trayPopup {{ background: {t['panel']}; border: 1px solid {t['borderStrong']}; border-radius: 9px; }}
     QFrame#trayHeader {{ background: {t['panel']}; border-bottom: 1px solid {t['border']}; }}
     QFrame#trayFooter {{ background: {t['panel']}; border-top: 1px solid {t['border']}; }}
+    QDialog#traySettingsDialog {{ background: {t['panel']}; }}
+    QLabel#dialogTitle {{ color: {t['text']}; font-size: 16px; font-weight: 700; }}
     QLabel#trayTitle {{ color: {t['text']}; font-size: 13px; font-weight: 700; }}
     QLabel#trayHeroName {{ color: {t['text']}; font-size: 14px; font-weight: 700; }}
     QLabel#trayAccountName {{ color: {t['text']}; font-size: 12px; font-weight: 600; }}
@@ -181,6 +183,9 @@ def build_qss(t: dict[str, str]) -> str:
     QComboBox {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 7px; padding: 6px 10px; color: {t['text']}; }}
     QComboBox:hover {{ border-color: {t['borderStrong']}; }}
     QComboBox QAbstractItemView {{ background: {t['panel']}; border: 1px solid {t['border']}; selection-background-color: {accent_soft}; }}
+    QCheckBox {{ color: {t['text2']}; spacing: 9px; padding: 2px 0; }}
+    QCheckBox:hover {{ color: {t['text']}; }}
+    QCheckBox::indicator {{ width: 15px; height: 15px; }}
 
     /* ---- Account list cards (selectable) ---- */
     QFrame#accountCard {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 10px; }}
