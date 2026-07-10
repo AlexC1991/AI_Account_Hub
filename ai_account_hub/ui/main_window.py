@@ -8,13 +8,14 @@ between Coding and Accounts (the core flow requirement).
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QMenuBar, QMessageBox,
-    QPushButton, QStackedWidget, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QMenuBar, QMessageBox, QPushButton,
+    QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from ai_account_hub import data
@@ -22,11 +23,14 @@ from ai_account_hub.ui.theme import ThemeManager
 from ai_account_hub.ui.tokens import DEFAULT_THEME, THEMES
 from ai_account_hub.ui.widgets import NetworkLogo, SegmentedSlider, Spinner, TitleBar, make_button, network_icon
 from ai_account_hub.ui.screens.accounts_screen import AccountsScreen
+from ai_account_hub.ui.tray_widget import TrayController
 
 
 class MainWindow(QWidget):
     def __init__(self, app) -> None:
         super().__init__()
+        self._tray_controller: TrayController | None = None
+        self._restore_maximized = False
         self.setObjectName("root")
         self.setWindowFlag(Qt.FramelessWindowHint, True)
         self.resize(1280, 820)
@@ -64,11 +68,14 @@ class MainWindow(QWidget):
 
         profiles = data.load_profiles()
         self.accounts.set_profiles(profiles)
+        self._setup_system_tray()
+        self._sync_tray_profiles(profiles)
 
         self.theme.changed.connect(lambda _n: self.titlebar.set_accent(self.theme.tokens["accent"]))
         self.theme.changed.connect(lambda _n: self._logo.set_accent(self.theme.tokens["accent"]))
-        self.theme.changed.connect(lambda _n: self.setWindowIcon(network_icon(self.theme.tokens["accent"])))
+        self.theme.changed.connect(lambda _n: self._sync_tray_theme())
         self.accounts.activity.connect(self._set_status)
+        self.accounts.profiles_changed.connect(self._sync_tray_profiles)
         self._select_section("accounts")
         self._clock = QTimer(self)
         self._clock.timeout.connect(self._tick)
@@ -104,6 +111,7 @@ class MainWindow(QWidget):
         window_menu.addAction("Accounts", lambda: self._select_section("accounts"))
         window_menu.addSeparator()
         window_menu.addAction("Minimize", self.showMinimized)
+        window_menu.addAction("Show Best Next", self._show_best_next)
         window_menu.addAction("Maximize / Restore", self._toggle_maximized)
 
         theme_menu = bar.addMenu("Theme")
@@ -143,6 +151,99 @@ class MainWindow(QWidget):
 
     def _toggle_maximized(self) -> None:
         self.showNormal() if self.isMaximized() else self.showMaximized()
+
+    # ---------- Windows system tray / compact Best Next popup ----------
+    def _setup_system_tray(self) -> None:
+        self._tray_controller = TrayController(self, self.theme, self._auto_on)
+        self._tray_controller.restore_requested.connect(self._restore_from_tray)
+        self._tray_controller.refresh_requested.connect(self._refresh_from_tray)
+        self._tray_controller.switch_requested.connect(self._switch_from_tray)
+        self._tray_controller.auto_refresh_requested.connect(self._set_auto_refresh)
+        self._tray_controller.exit_requested.connect(self.close)
+        self._tray_controller.popup_opening.connect(self._sync_tray_profiles)
+
+    def _sync_tray_theme(self) -> None:
+        icon = network_icon(self.theme.tokens["accent"])
+        self.setWindowIcon(icon)
+        if self._tray_controller is not None:
+            self._tray_controller.set_theme(self.theme.tokens)
+
+    def _active_profile_ids(self, profiles: list[dict]) -> set[str]:
+        active_ids: set[str] = set()
+        coding_pid = str(getattr(self.accounts, "_coding_active_pid", "") or "")
+        if coding_pid:
+            active_ids.add(coding_pid)
+
+        active_name = self.accounts._desktop_active_name()
+        if active_name:
+            for profile in profiles:
+                if (
+                    data.provider_key(profile) == "codex"
+                    and str(profile.get("name") or "").strip() == active_name
+                ):
+                    active_ids.add(data.profile_id(profile))
+
+        try:
+            marker = json.loads(
+                (data.LAUNCHER_ROOT / "claude-desktop-active-profile.json").read_text(
+                    encoding="utf-8-sig"
+                )
+            )
+        except Exception:
+            marker = {}
+        claude_name = str(marker.get("name") or "").strip()
+        if claude_name and not bool(marker.get("pendingCapture")):
+            for profile in profiles:
+                if (
+                    data.provider_key(profile) == "claude"
+                    and str(profile.get("name") or "").strip() == claude_name
+                ):
+                    active_ids.add(data.profile_id(profile))
+        return active_ids
+
+    def _sync_tray_profiles(self, profiles: list[dict] | None = None) -> None:
+        current = list(profiles if profiles is not None else self.accounts._profiles)
+        if self._tray_controller is not None:
+            self._tray_controller.set_profiles(current, self._active_profile_ids(current))
+
+    def _show_best_next(self) -> None:
+        if self._tray_controller is not None:
+            self._tray_controller.show_popup()
+
+    def _restore_from_tray(self) -> None:
+        if self._tray_controller is not None:
+            self._tray_controller.hide_popup()
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized)
+        if self._restore_maximized:
+            self.showMaximized()
+        else:
+            self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _refresh_from_tray(self) -> None:
+        self.accounts.refresh_all(reason="tray")
+
+    def _switch_from_tray(self, pid: str) -> None:
+        if self._tray_controller is not None:
+            self._tray_controller.hide_popup()
+        self.accounts.select(pid)
+        self.accounts.run_action("desktop")
+
+    def _minimize_to_tray(self) -> None:
+        if self._tray_controller is not None:
+            self._tray_controller.minimize(self)
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if (
+            event.type() == QEvent.Type.WindowStateChange
+            and self.isMinimized()
+            and self._tray_controller is not None
+            and self._tray_controller.available
+        ):
+            self._restore_maximized = bool(event.oldState() & Qt.WindowMaximized)
+            QTimer.singleShot(0, self._minimize_to_tray)
 
     def _set_theme(self, name: str) -> None:
         self.theme.apply(name)
@@ -310,10 +411,15 @@ class MainWindow(QWidget):
         return f"Auto Refresh · {'On' if self._auto_on else 'Off'}"
 
     def _toggle_auto(self) -> None:
-        self._auto_on = not self._auto_on
+        self._set_auto_refresh(not self._auto_on)
+
+    def _set_auto_refresh(self, enabled: bool) -> None:
+        self._auto_on = bool(enabled)
         self._auto_btn.setText(self._auto_label())
         self._auto_btn.setProperty("on", "true" if self._auto_on else "false")
         ThemeManager.repolish(self._auto_btn)
+        if self._tray_controller is not None:
+            self._tray_controller.set_auto_refresh(self._auto_on)
         self.settings["autoRefreshEnabled"] = self._auto_on
         data.save_settings(self.settings)
         if self._auto_on:
@@ -326,16 +432,21 @@ class MainWindow(QWidget):
         else:
             self._refresh_spin.stop()
             self._refresh_status.setVisible(False)
+        if self._tray_controller is not None:
+            self._tray_controller.set_refreshing(active)
 
     def _reload(self) -> None:
         profiles = data.load_profiles()
         self.accounts.set_profiles(profiles)
+        self._sync_tray_profiles(profiles)
 
     def _set_status(self, text: str) -> None:
         self._status_text = str(text)
 
     def _tick(self) -> None:
         self.accounts.tick()
+        if self._tray_controller is not None:
+            self._tray_controller.tick()
         if self._auto_on and dt.datetime.now() >= self._next_auto_refresh:
             self._next_auto_refresh = dt.datetime.now() + dt.timedelta(minutes=self._auto_minutes)
             self.accounts.refresh_all(reason="auto")
@@ -343,4 +454,6 @@ class MainWindow(QWidget):
     def closeEvent(self, event) -> None:
         self._clock.stop()
         self.accounts.close_workers()
+        if self._tray_controller is not None:
+            self._tray_controller.close()
         super().closeEvent(event)

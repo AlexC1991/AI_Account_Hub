@@ -152,6 +152,15 @@ def build_qss(t: dict[str, str]) -> str:
     QFrame#card {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 9px; }}
     QFrame#card[selected="true"] {{ background: {accent_soft}; border-color: {t['accent']}; }}
     QFrame#panel {{ background: {t['panel']}; border: 1px solid {t['border']}; border-radius: 10px; }}
+    QWidget#trayPopup {{ background: {t['panel']}; border: 1px solid {t['borderStrong']}; border-radius: 9px; }}
+    QFrame#trayHeader {{ background: {t['panel']}; border-bottom: 1px solid {t['border']}; }}
+    QFrame#trayFooter {{ background: {t['panel']}; border-top: 1px solid {t['border']}; }}
+    QLabel#trayTitle {{ color: {t['text']}; font-size: 13px; font-weight: 700; }}
+    QLabel#trayHeroName {{ color: {t['text']}; font-size: 14px; font-weight: 700; }}
+    QLabel#trayAccountName {{ color: {t['text']}; font-size: 12px; font-weight: 600; }}
+    QLabel#trayMetricValue {{ color: {t['text2']}; font-size: 11px; font-weight: 700; }}
+    QPushButton#trayAccountRow {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 7px; padding: 0; text-align: left; }}
+    QPushButton#trayAccountRow:hover {{ background: {t['panelHover']}; border-color: {t['borderStrong']}; }}
     QFrame#railDivider {{ background: {t['border']}; }}
     QLabel#sectionLabel {{ color: {t['text3']}; font-size: 10px; font-weight: 700; letter-spacing: 1px; }}
     QLabel#muted {{ color: {t['text2']}; font-size: 11px; }}
