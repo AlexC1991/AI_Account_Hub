@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Account Hub - Custom Notification Concepts</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #10151a;
+      --surface: #171d23;
+      --surface-2: #1d242b;
+      --surface-3: #242d35;
+      --border: #303b44;
+      --border-strong: #485660;
+      --text: #eef3f6;
+      --text-2: #a9b4bc;
+      --text-3: #75828c;
+      --accent: #2e92e8;
+      --accent-soft: #17354f;
+      --success: #4cc77a;
+      --success-soft: #183927;
+      --warn: #e8b83c;
+      --warn-soft: #3c3219;
+      --danger: #ef6762;
+      --danger-soft: #412322;
+      --desktop: #26323a;
+      --shadow: rgba(0, 0, 0, 0.48);
+      --codex: #5b9cf0;
+      --claude: #d77c51;
+      --cursor: #b8bec5;
+      --antigravity: #65a7f4;
+    }
+
+    html[data-theme="light"] {
+      color-scheme: light;
+      --page: #e8edf0;
+      --surface: #f7f9fa;
+      --surface-2: #ffffff;
+      --surface-3: #edf2f4;
+      --border: #d0d9de;
+      --border-strong: #aab7c0;
+      --text: #172027;
+      --text-2: #52616c;
+      --text-3: #7b8891;
+      --accent: #1677ca;
+      --accent-soft: #dcecf9;
+      --success: #21864a;
+      --success-soft: #dcefe3;
+      --warn: #966c00;
+      --warn-soft: #f4e9c8;
+      --danger: #bd3d39;
+      --danger-soft: #f5dfde;
+      --desktop: #c9d6dd;
+      --shadow: rgba(41, 55, 65, 0.24);
+    }
+
+    * { box-sizing: border-box; letter-spacing: 0; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background: var(--page);
+      color: var(--text);
+      font: 13px/1.42 "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+    }
+
+    button, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .app { min-height: 100vh; display: grid; grid-template-rows: 62px 1fr; }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      padding: 10px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hub-mark {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-3);
+    }
+
+    .hub-mark i { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+    .hub-mark i:nth-child(1) { left: 6px; top: 13px; }
+    .hub-mark i:nth-child(2) { left: 13px; top: 5px; }
+    .hub-mark i:nth-child(3) { right: 6px; top: 13px; }
+    .hub-mark i:nth-child(4) { left: 13px; bottom: 5px; }
+
+    .title { min-width: 180px; }
+    .title strong { display: block; font-size: 15px; font-weight: 650; }
+    .title span { color: var(--text-3); font-size: 11px; }
+    .top-spacer { flex: 1; }
+
+    .control, .primary, .scenario, .select-design, .toast-action, .close {
+      min-height: 32px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface-2);
+      color: var(--text-2);
+    }
+
+    .control, .primary { padding: 0 12px; }
+    .control:hover, .scenario:hover, .select-design:hover, .toast-action:hover { background: var(--surface-3); color: var(--text); }
+    .primary { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+
+    .layout { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 0; }
+
+    .sidebar {
+      padding: 14px 12px 18px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+    }
+
+    .section-label { margin: 0 0 8px; color: var(--text-3); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+    .sidebar-copy { margin: 0 0 14px; color: var(--text-2); font-size: 11px; }
+    .scenario-list { display: grid; gap: 5px; }
+
+    .scenario {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      min-height: 42px;
+      padding: 6px 9px;
+      text-align: left;
+    }
+
+    .scenario[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+    .scenario-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+    .scenario[data-tone="warning"] .scenario-dot { background: var(--warn); }
+    .scenario[data-tone="danger"] .scenario-dot { background: var(--danger); }
+    .scenario[data-tone="success"] .scenario-dot { background: var(--success); }
+    .scenario-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .scenario-provider { color: var(--text-3); font-size: 10px; }
+
+    .main { min-width: 0; padding: 18px; }
+    .page-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
+    .page-head h1 { margin: 0; font-size: 20px; font-weight: 650; }
+    .page-head p { max-width: 710px; margin: 4px 0 0; color: var(--text-2); }
+    .head-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .concept-grid { display: grid; grid-template-columns: repeat(2, minmax(360px, 1fr)); gap: 12px; }
+
+    .concept {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .concept[data-selected="true"] { border-color: var(--accent); }
+    .concept-head { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 8px 11px; border-bottom: 1px solid var(--border); }
+    .concept-number { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; background: var(--surface-3); color: var(--text-2); font-size: 11px; }
+    .concept-name { min-width: 0; flex: 1; }
+    .concept-name strong { display: block; font-size: 13px; }
+    .concept-name span { display: block; color: var(--text-3); font-size: 10px; }
+    .select-design { min-height: 28px; padding: 0 9px; font-size: 11px; }
+    .concept[data-selected="true"] .select-design { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+    .preview-stage {
+      min-height: 178px;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      background: var(--surface-2);
+    }
+
+    .toast {
+      position: relative;
+      width: min(100%, 340px);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 12px 30px var(--shadow);
+      overflow: hidden;
+    }
+
+    .toast[data-tone="warning"] { --tone: var(--warn); --tone-soft: var(--warn-soft); }
+    .toast[data-tone="danger"] { --tone: var(--danger); --tone-soft: var(--danger-soft); }
+    .toast[data-tone="success"] { --tone: var(--success); --tone-soft: var(--success-soft); }
+    .toast[data-tone="info"] { --tone: var(--accent); --tone-soft: var(--accent-soft); }
+
+    .provider-icon { width: 28px; height: 28px; flex: 0 0 28px; object-fit: contain; }
+    .close { width: 26px; min-height: 26px; padding: 0; font-size: 17px; line-height: 1; color: var(--text-3); }
+    .close:hover { color: var(--text); background: var(--surface-3); }
+    .toast-title { font-size: 12px; font-weight: 700; }
+    .toast-account { color: var(--text-2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .toast-message { color: var(--text-2); font-size: 11px; }
+    .toast-value { color: var(--tone); font-size: 16px; font-weight: 750; white-space: nowrap; }
+    .toast-meta { color: var(--text-3); font-size: 10px; white-space: nowrap; }
+
+    .meter { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+    .meter i { display: block; height: 100%; width: var(--value); border-radius: 3px; background: var(--tone); }
+    .meter-row { display: grid; grid-template-columns: 54px 1fr 32px; align-items: center; gap: 7px; font-size: 10px; color: var(--text-3); }
+    .meter-row b { color: var(--tone); font-size: 10px; text-align: right; }
+
+    .toast-rail { min-height: 102px; display: grid; grid-template-columns: 4px 38px minmax(0, 1fr) auto; column-gap: 9px; padding: 10px 10px 9px 0; }
+    .toast-rail .rail { grid-row: 1 / span 3; width: 4px; margin: -10px 0 -9px; background: var(--tone); }
+    .toast-rail .provider-icon { grid-row: 1 / span 2; align-self: center; margin-left: 4px; }
+    .toast-rail .copy { min-width: 0; }
+    .toast-rail .value-block { text-align: right; }
+    .toast-rail .meter { grid-column: 3 / 5; margin-top: 8px; }
+
+    .toast-detail { padding: 10px; }
+    .detail-head { display: flex; align-items: center; gap: 8px; }
+    .detail-copy { min-width: 0; flex: 1; }
+    .detail-message { margin: 8px 0 9px; }
+    .meters { display: grid; gap: 6px; }
+    .detail-footer { display: flex; align-items: center; gap: 7px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+    .detail-footer .toast-meta { flex: 1; }
+    .toast-action { min-height: 27px; padding: 0 9px; font-size: 10px; }
+    .toast-action.primary-action { border-color: var(--tone); background: var(--tone-soft); color: var(--tone); }
+
+    .toast-compact { width: min(100%, 306px); display: grid; grid-template-columns: 30px minmax(0, 1fr) auto 24px; align-items: center; gap: 8px; padding: 9px; }
+    .toast-compact .provider-icon { width: 26px; height: 26px; }
+    .toast-compact .meter { grid-column: 2 / 4; width: 100%; }
+    .compact-copy { min-width: 0; }
+    .compact-copy .toast-title, .compact-copy .toast-account { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .toast-action-card { padding: 10px; border-left: 3px solid var(--tone); }
+    .action-head { display: flex; align-items: center; gap: 8px; }
+    .action-head .detail-copy { flex: 1; }
+    .action-body { margin: 8px 0; color: var(--text-2); font-size: 11px; }
+    .action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+
+    .toast-reset { width: min(100%, 318px); padding: 10px; }
+    .reset-head { display: flex; align-items: center; gap: 8px; }
+    .reset-head .detail-copy { flex: 1; }
+    .reset-change { display: grid; grid-template-columns: 1fr 26px 1fr; align-items: center; gap: 6px; margin-top: 10px; }
+    .reset-stat { padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
+    .reset-stat span { display: block; color: var(--text-3); font-size: 9px; text-transform: uppercase; }
+    .reset-stat strong { display: block; margin-top: 2px; color: var(--tone); font-size: 13px; }
+    .reset-arrow { text-align: center; color: var(--text-3); }
+
+    .queue { position: relative; width: min(100%, 326px); height: 144px; }
+    .queue-item { position: absolute; left: 0; right: 0; min-height: 64px; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 8px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: 0 9px 22px var(--shadow); }
+    .queue-item:nth-child(1) { top: 0; z-index: 3; border-color: var(--tone); }
+    .queue-item:nth-child(2) { top: 53px; z-index: 2; transform: scale(.97); opacity: .78; }
+    .queue-item:nth-child(3) { top: 96px; z-index: 1; transform: scale(.94); opacity: .48; }
+    .queue-copy { min-width: 0; }
+    .queue-copy strong, .queue-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .queue-copy strong { font-size: 11px; }
+    .queue-copy span { color: var(--text-3); font-size: 10px; }
+
+    .demo-section, .catalog-section { margin-top: 18px; }
+    .section-head { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 9px; }
+    .section-head h2 { margin: 0; font-size: 16px; }
+    .section-head p { margin: 0; color: var(--text-3); font-size: 11px; }
+
+    .desktop-demo { position: relative; min-height: 340px; border: 1px solid var(--border); border-radius: 8px; background: var(--desktop); overflow: hidden; }
+    .fake-window { position: absolute; inset: 24px 80px 47px 36px; display: grid; grid-template-columns: 140px 1fr; border: 1px solid var(--border-strong); background: var(--surface); opacity: .72; }
+    .fake-side { border-right: 1px solid var(--border); background: var(--surface-2); }
+    .fake-lines { padding: 24px; }
+    .fake-lines i { display: block; width: 70%; height: 8px; margin-bottom: 12px; background: var(--surface-3); }
+    .fake-lines i:nth-child(2) { width: 48%; }
+    .fake-lines i:nth-child(3) { width: 82%; }
+    .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 38px; display: flex; align-items: center; gap: 6px; padding: 0 12px; background: var(--surface); border-top: 1px solid var(--border); }
+    .task-icon { width: 23px; height: 23px; border-radius: 5px; background: var(--surface-3); border: 1px solid var(--border); }
+    .task-icon.active { border-color: var(--accent); }
+    .task-time { margin-left: auto; color: var(--text-2); font-size: 10px; }
+    .desktop-stack { position: absolute; right: 12px; bottom: 50px; width: min(340px, calc(100% - 24px)); display: grid; gap: 8px; justify-items: end; }
+    .desktop-stack .toast { animation: toast-in 180ms ease-out; }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+    .catalog-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    table { width: 100%; min-width: 780px; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+    th { color: var(--text-3); font-size: 10px; text-transform: uppercase; background: var(--surface-2); }
+    td { color: var(--text-2); font-size: 11px; }
+    tr:last-child td { border-bottom: none; }
+    td strong { color: var(--text); font-weight: 650; }
+    .status { display: inline-flex; align-items: center; min-height: 20px; padding: 1px 7px; border-radius: 6px; font-size: 9px; font-weight: 700; }
+    .status.current { background: var(--success-soft); color: var(--success); }
+    .status.next { background: var(--accent-soft); color: var(--accent); }
+    .status.quiet { background: var(--surface-3); color: var(--text-3); }
+
+    .quiet-band { margin-top: 10px; padding: 11px 12px; border-left: 3px solid var(--border-strong); background: var(--surface); color: var(--text-2); font-size: 11px; }
+    .quiet-band strong { color: var(--text); }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+      .scenario-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .concept-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 620px) {
+      .app { grid-template-rows: auto 1fr; }
+      .topbar { flex-wrap: wrap; }
+      .top-spacer { display: none; }
+      .main { padding: 12px; }
+      .page-head { display: block; }
+      .head-actions { margin: 10px 0 0; justify-content: flex-start; }
+      .scenario-list { grid-template-columns: 1fr; }
+      .concept-grid { grid-template-columns: minmax(0, 1fr); }
+      .preview-stage { padding: 10px; }
+      .fake-window { inset: 18px 18px 47px; grid-template-columns: 90px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="hub-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="title">
+        <strong>AI Account Hub</strong>
+        <span>Custom notification concepts</span>
+      </div>
+      <div class="top-spacer"></div>
+      <button class="control" id="themeToggle" type="button">Light mode</button>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <p class="section-label">Example event</p>
+        <p class="sidebar-copy">Choose one event to compare the same content across every notification design.</p>
+        <div class="scenario-list" id="scenarioList"></div>
+      </aside>
+
+      <main class="main">
+        <div class="page-head">
+          <div>
+            <h1>Six branded notification directions</h1>
+            <p>These are Hub-owned Qt overlays positioned above the taskbar. They can use provider icons, real quota bars, account actions, and the active Hub theme.</p>
+          </div>
+          <div class="head-actions">
+            <button class="primary" id="showDesktop" type="button">Preview selected</button>
+          </div>
+        </div>
+
+        <section class="concept-grid" id="conceptGrid" aria-label="Notification concepts"></section>
+
+        <section class="demo-section">
+          <div class="section-head">
+            <h2>Desktop placement</h2>
+            <p>Bottom-right, 10 px above the taskbar; up to three notifications stack upward.</p>
+          </div>
+          <div class="desktop-demo">
+            <div class="fake-window" aria-hidden="true"><div class="fake-side"></div><div class="fake-lines"><i></i><i></i><i></i></div></div>
+            <div class="desktop-stack" id="desktopStack"></div>
+            <div class="taskbar" aria-hidden="true"><span class="task-icon"></span><span class="task-icon active"></span><span class="task-icon"></span><span class="task-time">15:42</span></div>
+          </div>
+        </section>
+
+        <section class="catalog-section">
+          <div class="section-head">
+            <h2>Proposed notification catalog</h2>
+            <p>Current alerts are separated from recommended additions.</p>
+          </div>
+          <div class="catalog-wrap">
+            <table>
+              <thead><tr><th>Event</th><th>Who triggers it</th><th>What it shows</th><th>Default action</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td><strong>5-hour usage low</strong></td><td>Active account only</td><td>Account, provider, percent left, reset countdown</td><td>Switch account</td><td><span class="status current">Implemented</span></td></tr>
+                <tr><td><strong>Weekly usage low</strong></td><td>Active account only</td><td>Weekly percent left and reset day/time</td><td>Open account</td><td><span class="status current">Implemented</span></td></tr>
+                <tr><td><strong>Limit reached</strong></td><td>Active account only</td><td>Which window blocked the account and ready countdown</td><td>Switch to best</td><td><span class="status current">Implemented</span></td></tr>
+                <tr><td><strong>Limit reset / ready again</strong></td><td>Every saved account</td><td>Refilled window, new percent left, provider/account</td><td>Use account</td><td><span class="status current">Implemented</span></td></tr>
+                <tr><td><strong>Reset credit available</strong></td><td>Eligible Codex accounts</td><td>Credit count and affected account</td><td>Open account</td><td><span class="status next">Recommended</span></td></tr>
+                <tr><td><strong>Login revoked or expired</strong></td><td>Active or selected account</td><td>Provider, account, safe reason without token details</td><td>Login</td><td><span class="status next">Recommended</span></td></tr>
+                <tr><td><strong>Desktop switch failed</strong></td><td>Immediate user action</td><td>Target account and concise launch/auth failure</td><td>Open diagnostics</td><td><span class="status next">Recommended</span></td></tr>
+                <tr><td><strong>Repeated refresh failure</strong></td><td>Three consecutive failures</td><td>Provider/account and last successful refresh time</td><td>Retry</td><td><span class="status next">Recommended</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="quiet-band"><strong>Quiet by design:</strong> no alert for ordinary successful refreshes, unchanged percentages, routine Ready states, inactive accounts merely crossing the low threshold, calendar navigation, or every individual token-history update.</div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const iconRoot = "../ai_account_hub/assets/";
+    const scenarios = [
+      { id: "low5", label: "5-hour usage low", provider: "Codex", icon: "codex-icon.png", account: "Codex AC112 Account", tone: "warning", title: "5-hour limit running low", message: "12% remains in the active session.", value: "12%", valueNum: 12, weekly: 38, session: 12, meta: "Resets in 42m", action: "Switch account", oldValue: "18% left", newValue: "12% left" },
+      { id: "lowWeek", label: "Weekly usage low", provider: "Claude", icon: "claude-icon.png", account: "Claude Code Proton", tone: "warning", title: "Weekly usage running low", message: "8% remains for this weekly window.", value: "8%", valueNum: 8, weekly: 8, session: 74, meta: "Resets Sat 11:09", action: "Open account", oldValue: "14% left", newValue: "8% left" },
+      { id: "bothLow", label: "Both limits low", provider: "Codex", icon: "codex-icon.png", account: "Codex Gmail Account", tone: "warning", title: "Account nearly exhausted", message: "Both usage windows are below the warning threshold.", value: "6%", valueNum: 6, weekly: 9, session: 6, meta: "5-hour resets in 18m", action: "Switch to best", oldValue: "11% left", newValue: "6% left" },
+      { id: "reached", label: "Limit reached", provider: "Codex", icon: "codex-icon.png", account: "Codex ACCA Account", tone: "danger", title: "Active account limit reached", message: "This account is no longer ready to use.", value: "0%", valueNum: 0, weekly: 50, session: 0, meta: "Ready in 1h 53m", action: "Switch to best", oldValue: "4% left", newValue: "Not ready" },
+      { id: "reset", label: "Account reset", provider: "Claude", icon: "claude-icon.png", account: "Claude Code Proton", tone: "success", title: "Account ready again", message: "The 5-hour usage window has reset.", value: "100%", valueNum: 100, weekly: 22, session: 100, meta: "Ready to use", action: "Use account", oldValue: "0% left", newValue: "100% left" },
+      { id: "credit", label: "Reset credit ready", provider: "Codex", icon: "codex-icon.png", account: "Codex Personal", tone: "info", title: "Reset credit available", message: "One usage reset can be applied to this account.", value: "1 credit", valueNum: 100, weekly: 0, session: 0, meta: "Optional action", action: "Open account", oldValue: "No credit", newValue: "1 available" },
+      { id: "login", label: "Login required", provider: "Claude", icon: "claude-icon.png", account: "Claude Code Work", tone: "danger", title: "Claude login required", message: "The saved login can no longer be refreshed.", value: "Login", valueNum: 0, weekly: 0, session: 0, meta: "Credentials are never shown", action: "Login", oldValue: "Ready", newValue: "Login needed" },
+      { id: "switchFail", label: "Desktop switch failed", provider: "Codex", icon: "codex-icon.png", account: "Codex AC112 Account", tone: "danger", title: "Desktop switch failed", message: "Codex Desktop did not reopen for the selected account.", value: "Failed", valueNum: 0, weekly: 38, session: 99, meta: "Open diagnostics for details", action: "Diagnostics", oldValue: "Switching", newValue: "Failed" }
+    ];
+
+    const concepts = [
+      { id: "rail", name: "Signal Rail", note: "320 x 102 - recommended default" },
+      { id: "detail", name: "Quota Detail", note: "340 x 156 - both limits visible" },
+      { id: "compact", name: "Compact Meter", note: "306 x 76 - least desktop space" },
+      { id: "action", name: "Action Alert", note: "336 x 132 - failure and limit actions" },
+      { id: "reset", name: "Reset Change", note: "318 x 118 - clear before and after" },
+      { id: "queue", name: "Smart Stack", note: "326 x 144 - grouped event history" }
+    ];
+
+    let selectedScenario = scenarios[0];
+    let selectedConcept = "rail";
+
+    const esc = (value) => String(value).replace(/[&<>"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"})[char]);
+    const icon = (event) => `${iconRoot}${event.icon}`;
+    const meter = (value) => `<div class="meter" style="--value:${Math.max(0, Math.min(100, value))}%"><i></i></div>`;
+    const closeButton = `<button class="close" type="button" title="Dismiss notification" aria-label="Dismiss notification">&times;</button>`;
+
+    function renderToast(type, event) {
+      const common = `data-tone="${event.tone}"`;
+      if (type === "rail") return `
+        <article class="toast toast-rail" ${common}>
+          <span class="rail"></span>
+          <img class="provider-icon" src="${icon(event)}" alt="">
+          <div class="copy"><div class="toast-title">${esc(event.title)}</div><div class="toast-account">${esc(event.account)}</div><div class="toast-message">${esc(event.message)}</div></div>
+          <div class="value-block"><div class="toast-value">${esc(event.value)}</div><div class="toast-meta">${esc(event.meta)}</div></div>
+          ${meter(event.valueNum)}
+        </article>`;
+
+      if (type === "detail") return `
+        <article class="toast toast-detail" ${common}>
+          <div class="detail-head"><img class="provider-icon" src="${icon(event)}" alt=""><div class="detail-copy"><div class="toast-title">${esc(event.title)}</div><div class="toast-account">${esc(event.account)} | ${esc(event.provider)}</div></div>${closeButton}</div>
+          <div class="toast-message detail-message">${esc(event.message)}</div>
+          <div class="meters"><div class="meter-row"><span>5-hour</span>${meter(event.session)}<b>${event.session}%</b></div><div class="meter-row"><span>Weekly</span>${meter(event.weekly)}<b>${event.weekly}%</b></div></div>
+          <div class="detail-footer"><span class="toast-meta">${esc(event.meta)}</span><button class="toast-action primary-action" type="button">${esc(event.action)}</button></div>
+        </article>`;
+
+      if (type === "compact") return `
+        <article class="toast toast-compact" ${common}>
+          <img class="provider-icon" src="${icon(event)}" alt=""><div class="compact-copy"><div class="toast-title">${esc(event.title)}</div><div class="toast-account">${esc(event.account)}</div></div><div class="toast-value">${esc(event.value)}</div>${closeButton}${meter(event.valueNum)}
+        </article>`;
+
+      if (type === "action") return `
+        <article class="toast toast-action-card" ${common}>
+          <div class="action-head"><img class="provider-icon" src="${icon(event)}" alt=""><div class="detail-copy"><div class="toast-title">${esc(event.title)}</div><div class="toast-account">${esc(event.account)}</div></div>${closeButton}</div>
+          <div class="action-body">${esc(event.message)} <span class="toast-meta">${esc(event.meta)}</span></div>
+          <div class="action-buttons"><button class="toast-action primary-action" type="button">${esc(event.action)}</button><button class="toast-action" type="button">Snooze 15m</button></div>
+        </article>`;
+
+      if (type === "reset") return `
+        <article class="toast toast-reset" ${common}>
+          <div class="reset-head"><img class="provider-icon" src="${icon(event)}" alt=""><div class="detail-copy"><div class="toast-title">${esc(event.title)}</div><div class="toast-account">${esc(event.account)}</div></div>${closeButton}</div>
+          <div class="reset-change"><div class="reset-stat"><span>Before</span><strong>${esc(event.oldValue)}</strong></div><div class="reset-arrow">&#8594;</div><div class="reset-stat"><span>Now</span><strong>${esc(event.newValue)}</strong></div></div>
+        </article>`;
+
+      const olderOne = scenarios.find(item => item.id === "reset");
+      const olderTwo = scenarios.find(item => item.id === "lowWeek");
+      return `
+        <div class="queue toast" ${common}>
+          ${queueItem(event, event.value)}
+          ${queueItem(olderOne, "Ready")}
+          ${queueItem(olderTwo, "8%")}
+        </div>`;
+    }
+
+    function queueItem(event, value) {
+      return `<div class="queue-item"><img class="provider-icon" src="${icon(event)}" alt=""><div class="queue-copy"><strong>${esc(event.title)}</strong><span>${esc(event.account)}</span></div><div class="toast-value">${esc(value)}</div></div>`;
+    }
+
+    function buildScenarios() {
+      const host = document.getElementById("scenarioList");
+      host.innerHTML = scenarios.map((event, index) => `
+        <button class="scenario" data-id="${event.id}" data-tone="${event.tone}" aria-pressed="${index === 0}">
+          <span class="scenario-dot"></span><span class="scenario-name">${esc(event.label)}</span><span class="scenario-provider">${esc(event.provider)}</span>
+        </button>`).join("");
+      host.addEventListener("click", (event) => {
+        const button = event.target.closest(".scenario");
+        if (!button) return;
+        selectedScenario = scenarios.find(item => item.id === button.dataset.id) || scenarios[0];
+        host.querySelectorAll(".scenario").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+        renderConcepts();
+      });
+    }
+
+    function renderConcepts() {
+      const host = document.getElementById("conceptGrid");
+      host.innerHTML = concepts.map((concept, index) => `
+        <article class="concept" data-concept="${concept.id}" data-selected="${concept.id === selectedConcept}">
+          <div class="concept-head"><span class="concept-number">${index + 1}</span><div class="concept-name"><strong>${concept.name}</strong><span>${concept.note}</span></div><button class="select-design" type="button">${concept.id === selectedConcept ? "Selected" : "Select"}</button></div>
+          <div class="preview-stage">${renderToast(concept.id, selectedScenario)}</div>
+        </article>`).join("");
+      host.querySelectorAll(".select-design").forEach(button => button.addEventListener("click", () => {
+        selectedConcept = button.closest(".concept").dataset.concept;
+        renderConcepts();
+      }));
+    }
+
+    function previewDesktop() {
+      const host = document.getElementById("desktopStack");
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderToast(selectedConcept, selectedScenario);
+      const toast = wrapper.firstElementChild;
+      host.prepend(toast);
+      while (host.children.length > 3) host.lastElementChild.remove();
+      toast.querySelectorAll(".close").forEach(button => button.addEventListener("click", () => toast.remove()));
+    }
+
+    document.getElementById("showDesktop").addEventListener("click", previewDesktop);
+    document.getElementById("themeToggle").addEventListener("click", (event) => {
+      const root = document.documentElement;
+      const next = root.dataset.theme === "dark" ? "light" : "dark";
+      root.dataset.theme = next;
+      event.currentTarget.textContent = next === "dark" ? "Light mode" : "Dark mode";
+    });
+
+    buildScenarios();
+    renderConcepts();
+    previewDesktop();
+  </script>
+</body>
+</html>
