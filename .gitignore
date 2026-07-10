@@ -52,6 +52,7 @@ provider-discovery.json
 /blob_storage/
 /Shared Dictionary/
 
+
 # (The runtime icon cache lives under ~/.codex-account-launcher, already ignored;
 # the bundled provider icons in ai_account_hub/assets/ are tracked on purpose.)
 
@@ -60,6 +61,7 @@ provider-discovery.json
 # maintainer's machine.
 /local-docs/
 /work/
+/prototypes/
 /tests/
 /conftest.py
 test_*.py
