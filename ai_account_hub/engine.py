@@ -504,24 +504,60 @@ class HubEngine(_ClaudeDesktopMixin):
 
     def _stop_codex_desktop(self) -> str:
         script = r"""
+$packageRoots = @()
+try {
+    $packageRoots = @(
+        Get-AppxPackage -Name OpenAI.Codex -ErrorAction SilentlyContinue |
+            ForEach-Object { [string]$_.InstallLocation } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+} catch {}
+
+function Test-CodexDesktopPath([string]$ExecutablePath) {
+    if ([string]::IsNullOrWhiteSpace($ExecutablePath)) { return $false }
+
+    # The desktop host was originally Codex.exe and is ChatGPT.exe in newer
+    # builds. Match the stable OpenAI.Codex package app directory so future
+    # host renames do not break account switching again.
+    foreach ($root in $packageRoots) {
+        try {
+            $appRoot = [IO.Path]::GetFullPath((Join-Path $root "app")).TrimEnd('\') + '\'
+            $fullPath = [IO.Path]::GetFullPath($ExecutablePath)
+            if ($fullPath.StartsWith($appRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+            }
+        } catch {}
+    }
+
+    # Keep a fallback for systems where Get-AppxPackage cannot return the
+    # install location to the current process.
+    return $ExecutablePath -match '\\WindowsApps\\OpenAI\.Codex_[^\\]+\\app\\'
+}
+
 function Get-CodexDesktopProcess {
     $items = @()
     foreach ($process in @(Get-Process -ErrorAction SilentlyContinue)) {
         $path = ""
         try { $path = [string]$process.Path } catch { $path = "" }
-        if ($path -match '\\WindowsApps\\OpenAI\.Codex_' -and $path -match '\\app\\(Codex|resources\\codex)\.exe$') { $items += $process }
+        if (Test-CodexDesktopPath $path) { $items += $process }
     }
     return @($items)
 }
 $matches = @(Get-CodexDesktopProcess)
 if ($matches.Count -eq 0) { Write-Output "No Codex Desktop background processes were running."; exit 0 }
 $closed = 0
-foreach ($p in $matches) { try { if ($p.ProcessName -eq "Codex" -and $p.MainWindowHandle -ne [IntPtr]::Zero) { if ($p.CloseMainWindow()) { $closed++ } } } catch {} }
+foreach ($p in $matches) {
+    try {
+        if ($p.MainWindowHandle -ne [IntPtr]::Zero -and $p.CloseMainWindow()) { $closed++ }
+    } catch {}
+}
 $deadline = [DateTime]::Now.AddSeconds(12)
 do { Start-Sleep -Milliseconds 250; $remaining = @(Get-CodexDesktopProcess) } while ($remaining.Count -gt 0 -and [DateTime]::Now -lt $deadline)
 $killed = 0
 foreach ($p in $remaining) { try { $p.Kill(); $killed++ } catch {} }
-Write-Output "Stopped $($matches.Count) Codex Desktop process(es). Graceful: $closed. Force: $killed."
+$killDeadline = [DateTime]::Now.AddSeconds(3)
+do { Start-Sleep -Milliseconds 100; $stillRunning = @(Get-CodexDesktopProcess) } while ($stillRunning.Count -gt 0 -and [DateTime]::Now -lt $killDeadline)
+Write-Output "Stopped $($matches.Count) Codex Desktop process(es). Graceful: $closed. Force: $killed. Remaining: $($stillRunning.Count)."
 """
         proc = L.run_capture("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], L.DEFAULT_WORKSPACE, timeout=25)
         return proc.stdout.strip() or proc.stderr.strip() or "Desktop process check completed."
