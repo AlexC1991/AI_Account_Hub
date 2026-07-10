@@ -222,7 +222,8 @@ class MainWindow(QWidget):
             return
         dialog = TrayWidgetSettingsDialog(
             self._tray_controller.widget_settings,
-            self,
+            list(self.accounts._profiles),
+            parent=self,
         )
         if not dialog.exec():
             return

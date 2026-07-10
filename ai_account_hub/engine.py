@@ -28,6 +28,7 @@ from ai_account_hub.engine_claude_desktop import _ClaudeDesktopMixin
 class HubEngine(_ClaudeDesktopMixin):
     def __init__(self) -> None:
         self.codex_cli_path = ""
+        self.codex_desktop_path = ""
         self.node_path = ""
         self.claude_desktop_path = ""
         self.claude_code_path = ""
@@ -56,6 +57,7 @@ class HubEngine(_ClaudeDesktopMixin):
                 return str(target.get("path") or "") if target.get("found") else ""
 
             self.codex_cli_path = path_for("codex", "cli")
+            self.codex_desktop_path = path_for("codex", "desktop")
             self.claude_desktop_path = path_for("claude", "desktop")
             self.claude_code_path = path_for("claude", "cli")
             self.cursor_desktop_path = path_for("cursor", "desktop")
@@ -68,6 +70,7 @@ class HubEngine(_ClaudeDesktopMixin):
         except Exception:
             # fall back to legacy's targeted locators
             self.codex_cli_path = _safe(L.locate_codex_cli)
+            self.codex_desktop_path = ""
             self.node_path = _safe(L.locate_node)
             self.claude_desktop_path = _safe(L.locate_claude_desktop_path)
             self.claude_code_path = _safe(L.locate_claude_code_path)
@@ -488,8 +491,7 @@ class HubEngine(_ClaudeDesktopMixin):
                     return False, "Antigravity.exe was not found."
                 subprocess.Popen([self.antigravity_desktop_path], cwd=str(Path(self.antigravity_desktop_path).parent))
             else:
-                # codex desktop switch is a distinct, heavier flow; open codex home for now
-                return self.action_home(profile)
+                return self.codex_switch_desktop(profile)
         except OSError as error:
             return False, f"Could not open desktop: {error}"
         return True, f"Opened {L.provider_label(profile)} for {name}."
@@ -614,21 +616,124 @@ Write-Output "Stopped $($matches.Count) Codex Desktop process(es). Graceful: $cl
         L.DESKTOP_ACTIVE_PROFILE_PATH.write_text(json.dumps(marker, indent=2), encoding="utf-8")
         return f"Synced {profile.get('name','Account')} auth into the default Codex desktop home."
 
-    def _start_codex_desktop(self, profile: dict) -> None:
-        import os
-        import subprocess
-        ws = self._workspace(profile)
-        env = os.environ.copy()
-        env["CODEX_HOME"] = str(profile.get("codexHome"))
-        subprocess.Popen([self.codex_cli_path, "app", str(ws)], cwd=str(ws), env=env, creationflags=getattr(L, "CREATE_NO_WINDOW", 0))
+    def _codex_desktop_activation_info(self) -> dict[str, str]:
+        """Resolve the installed Store app through its current manifest.
+
+        Codex Desktop's host executable has changed from ``Codex.exe`` to
+        ``ChatGPT.exe``. The package family + application ID is the stable
+        Windows activation contract, so do not infer the launcher from a host
+        filename or route through ``codex app`` (which can invoke installation).
+        """
+
+        script = r"""
+$ErrorActionPreference = "Stop"
+$pkg = Get-AppxPackage -Name OpenAI.Codex -ErrorAction Stop |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
+if ($null -eq $pkg) { throw "The installed OpenAI.Codex package was not found." }
+$manifest = Get-AppxPackageManifest -Package $pkg
+$app = @($manifest.Package.Applications.Application) |
+    Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.Id) } |
+    Select-Object -First 1
+if ($null -eq $app) { throw "OpenAI.Codex has no launchable application in its manifest." }
+[pscustomobject]@{
+    target = "shell:AppsFolder\$($pkg.PackageFamilyName)!$($app.Id)"
+    installLocation = [string]$pkg.InstallLocation
+    executable = [string]$app.Executable
+    packageFullName = [string]$pkg.PackageFullName
+} | ConvertTo-Json -Compress
+"""
+        process = L.run_capture(
+            "powershell.exe",
+            ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            L.DEFAULT_WORKSPACE,
+            timeout=12,
+        )
+        output = process.stdout.strip()
+        if process.returncode != 0 or not output:
+            raise RuntimeError(
+                process.stderr.strip()
+                or output
+                or "Could not resolve the installed Codex Desktop package."
+            )
+        try:
+            payload = json.loads(output)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("Codex Desktop package lookup returned invalid data.") from error
+        info = {
+            "target": str(payload.get("target") or "").strip(),
+            "installLocation": str(payload.get("installLocation") or "").strip(),
+            "executable": str(payload.get("executable") or "").strip(),
+            "packageFullName": str(payload.get("packageFullName") or "").strip(),
+        }
+        if not info["target"].lower().startswith("shell:appsfolder\\"):
+            raise RuntimeError("Codex Desktop package did not expose a valid activation ID.")
+        if not info["installLocation"]:
+            raise RuntimeError("Codex Desktop package did not expose its install location.")
+        return info
+
+    def _start_codex_desktop(self, activation: dict[str, str]) -> str:
+        target = str(activation.get("target") or "").strip()
+        install_location = str(activation.get("installLocation") or "").strip()
+        package_name = str(activation.get("packageFullName") or "OpenAI.Codex").strip()
+        script = f"""
+$ErrorActionPreference = "Stop"
+$target = {L.quote_ps(target)}
+$installLocation = {L.quote_ps(install_location)}
+$packageName = {L.quote_ps(package_name)}
+$appRoot = [IO.Path]::GetFullPath((Join-Path $installLocation "app")).TrimEnd('\\') + '\\'
+Start-Process -FilePath "explorer.exe" -ArgumentList $target | Out-Null
+
+function Get-CodexDesktopProcess {{
+    $items = @()
+    foreach ($process in @(Get-Process -ErrorAction SilentlyContinue)) {{
+        $path = ""
+        try {{ $path = [string]$process.Path }} catch {{ $path = "" }}
+        if ([string]::IsNullOrWhiteSpace($path)) {{ continue }}
+        try {{
+            $fullPath = [IO.Path]::GetFullPath($path)
+            if ($fullPath.StartsWith($appRoot, [StringComparison]::OrdinalIgnoreCase)) {{
+                $items += $process
+            }}
+        }} catch {{}}
+    }}
+    return @($items)
+}}
+
+$deadline = [DateTime]::Now.AddSeconds(12)
+do {{
+    Start-Sleep -Milliseconds 200
+    $running = @(Get-CodexDesktopProcess)
+}} while ($running.Count -eq 0 -and [DateTime]::Now -lt $deadline)
+if ($running.Count -eq 0) {{
+    throw "Windows accepted the Codex Desktop activation request, but no app process started."
+}}
+Write-Output "Opened installed Codex Desktop package $packageName."
+"""
+        process = L.run_capture(
+            "powershell.exe",
+            ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            L.DEFAULT_WORKSPACE,
+            timeout=18,
+        )
+        output = process.stdout.strip()
+        if process.returncode != 0:
+            raise RuntimeError(
+                process.stderr.strip()
+                or output
+                or "Codex Desktop did not reopen after the account switch."
+            )
+        return output or f"Opened installed Codex Desktop package {package_name}."
 
     def codex_switch_desktop(self, profile: dict) -> tuple[bool, str]:
         if L.provider_key(profile) != "codex":
             return self.action_desktop(profile)
-        if not self.codex_cli_path:
-            return False, self.codex_cli_error or "codex.exe was not found."
         if not L.has_profile_auth(profile):
             return False, f"No auth.json for {profile.get('name','Account')}. Use Login first."
+        try:
+            activation = self._codex_desktop_activation_info()
+        except Exception as error:
+            return False, f"Could not prepare Codex Desktop: {error}"
         lines = []
         lines.append(self._stop_codex_desktop())
         back = self._sync_active_back()
@@ -636,8 +741,12 @@ Write-Output "Stopped $($matches.Count) Codex Desktop process(es). Graceful: $cl
             lines.append(back)
         lines.append(self._clear_default_auth())
         lines.append(self._sync_profile_to_default(profile))
-        self._start_codex_desktop(profile)
-        lines.append(f"Switched Codex Desktop to {profile.get('name','Account')} and requested relaunch.")
+        try:
+            lines.append(self._start_codex_desktop(activation))
+        except Exception as error:
+            lines.append(f"Codex Desktop relaunch failed: {error}")
+            return False, "\n".join(lines)
+        lines.append(f"Switched Codex Desktop to {profile.get('name','Account')}.")
         return True, "\n".join(lines)
 
     def codex_dry_run(self, profile: dict) -> tuple[bool, str]:
@@ -645,6 +754,13 @@ Write-Output "Stopped $($matches.Count) Codex Desktop process(es). Graceful: $cl
             return False, "Desktop switch dry-run is Codex-only."
         auth_path = L.profile_auth_path(profile)
         marker = self._active_desktop_marker()
+        try:
+            activation = self._codex_desktop_activation_info()
+            desktop_target = activation.get("target") or "not found"
+            desktop_executable = activation.get("executable") or "not exposed"
+        except Exception as error:
+            desktop_target = f"not available ({error})"
+            desktop_executable = "-"
         lines = [
             f"Dry run for Codex Desktop switch to {profile.get('name','Account')}",
             f"Selected CODEX_HOME: {profile.get('codexHome')}",
@@ -652,6 +768,8 @@ Write-Output "Stopped $($matches.Count) Codex Desktop process(es). Graceful: $cl
             f"Default desktop auth exists: {L.default_auth_path().exists()}",
             f"Active marker: {marker.get('name') or 'none'}",
             f"Codex CLI: {self.codex_cli_path or 'not found'}",
+            f"Codex Desktop activation: {desktop_target}",
+            f"Codex Desktop executable: {desktop_executable}",
             "",
             "Planned: verify login, stop processes, save-back, clear+backup default, copy profile auth, relaunch.",
         ]

@@ -156,6 +156,8 @@ def build_qss(t: dict[str, str]) -> str:
     QFrame#trayHeader {{ background: {t['panel']}; border-bottom: 1px solid {t['border']}; }}
     QFrame#trayFooter {{ background: {t['panel']}; border-top: 1px solid {t['border']}; }}
     QDialog#traySettingsDialog {{ background: {t['panel']}; }}
+    QScrollArea#trayVisibilityScroll {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 7px; }}
+    QWidget#trayVisibilityHost {{ background: {t['panel2']}; }}
     QLabel#dialogTitle {{ color: {t['text']}; font-size: 16px; font-weight: 700; }}
     QLabel#trayTitle {{ color: {t['text']}; font-size: 13px; font-weight: 700; }}
     QLabel#trayHeroName {{ color: {t['text']}; font-size: 14px; font-weight: 700; }}
@@ -186,6 +188,9 @@ def build_qss(t: dict[str, str]) -> str:
     QCheckBox {{ color: {t['text2']}; spacing: 9px; padding: 2px 0; }}
     QCheckBox:hover {{ color: {t['text']}; }}
     QCheckBox::indicator {{ width: 15px; height: 15px; }}
+    QCheckBox[visibilityProvider="true"] {{ color: {t['text']}; font-weight: 700; padding-top: 3px; }}
+    QCheckBox[visibilityAccount="true"] {{ color: {t['text2']}; font-size: 11px; }}
+    QCheckBox[visibilityAccount="true"]:disabled {{ color: {t['text3']}; }}
 
     /* ---- Account list cards (selectable) ---- */
     QFrame#accountCard {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 10px; }}

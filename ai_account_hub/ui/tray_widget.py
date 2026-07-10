@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMenu,
     QPushButton,
+    QScrollArea,
     QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
@@ -41,6 +43,8 @@ TRAY_SETTING_DEFAULTS = {
     "trayShowRefresh": True,
     "trayShowDashboard": True,
     "trayNextAccounts": 2,
+    "trayExcludedProviders": [],
+    "trayExcludedAccounts": [],
 }
 TRAY_WIDGET_WIDTHS = (300, 320, 360)
 
@@ -87,14 +91,53 @@ def normalize_tray_settings(raw: dict | None) -> dict:
     except (TypeError, ValueError):
         next_accounts = settings["trayNextAccounts"]
     settings["trayNextAccounts"] = max(0, min(3, next_accounts))
+
+    def normalized_list(key: str, *, lower: bool = False) -> list[str]:
+        value = source.get(key, [])
+        items = value if isinstance(value, (list, tuple, set)) else [value]
+        cleaned = {
+            (str(item).strip().lower() if lower else str(item).strip())
+            for item in items
+            if str(item).strip()
+        }
+        return sorted(cleaned, key=str.lower)
+
+    settings["trayExcludedProviders"] = normalized_list(
+        "trayExcludedProviders",
+        lower=True,
+    )
+    settings["trayExcludedAccounts"] = normalized_list("trayExcludedAccounts")
     return settings
+
+
+def visible_tray_profiles(profiles: list[dict], settings: dict | None) -> list[dict]:
+    """Filter only the tray popup; dashboard profiles remain untouched."""
+
+    normalized = normalize_tray_settings(settings)
+    excluded_providers = set(normalized["trayExcludedProviders"])
+    excluded_accounts = set(normalized["trayExcludedAccounts"])
+    return [
+        profile
+        for profile in profiles
+        if isinstance(profile, dict)
+        and data.provider_key(profile).lower() not in excluded_providers
+        and data.profile_id(profile) not in excluded_accounts
+    ]
 
 
 class TrayWidgetSettingsDialog(QDialog):
     """Small preferences dialog for the information shown in Best Next."""
 
-    def __init__(self, settings: dict | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        settings: dict | None = None,
+        profiles: list[dict] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
+        self._profiles = [profile for profile in (profiles or []) if isinstance(profile, dict)]
+        self._provider_checks: dict[str, QCheckBox] = {}
+        self._account_checks: dict[str, QCheckBox] = {}
         self.setObjectName("traySettingsDialog")
         self.setWindowTitle("Widget settings")
         self.setModal(True)
@@ -105,7 +148,7 @@ class TrayWidgetSettingsDialog(QDialog):
     def _build(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 16)
-        layout.setSpacing(14)
+        layout.setSpacing(12)
 
         title = QLabel("Best Next widget")
         title.setObjectName("dialogTitle")
@@ -149,6 +192,30 @@ class TrayWidgetSettingsDialog(QDialog):
         ):
             layout.addWidget(checkbox)
 
+        visibility_title = QLabel("VISIBLE IN BEST NEXT")
+        visibility_title.setObjectName("sectionLabel")
+        layout.addWidget(visibility_title)
+        visibility_note = QLabel(
+            "Hide a provider or individual account from this widget only."
+        )
+        visibility_note.setObjectName("faint")
+        layout.addWidget(visibility_note)
+
+        self.visibility_scroll = QScrollArea()
+        self.visibility_scroll.setObjectName("trayVisibilityScroll")
+        self.visibility_scroll.setWidgetResizable(True)
+        self.visibility_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.visibility_scroll.setFixedHeight(170)
+        visibility_host = QWidget()
+        visibility_host.setObjectName("trayVisibilityHost")
+        visibility_layout = QVBoxLayout(visibility_host)
+        visibility_layout.setContentsMargins(10, 8, 10, 8)
+        visibility_layout.setSpacing(5)
+        self._build_visibility_controls(visibility_layout)
+        visibility_layout.addStretch(1)
+        self.visibility_scroll.setWidget(visibility_host)
+        layout.addWidget(self.visibility_scroll)
+
         actions = QHBoxLayout()
         actions.setSpacing(8)
         reset = make_button("Reset defaults", "ghost")
@@ -163,6 +230,55 @@ class TrayWidgetSettingsDialog(QDialog):
         actions.addWidget(save)
         layout.addLayout(actions)
 
+    def _build_visibility_controls(self, layout: QVBoxLayout) -> None:
+        grouped: dict[str, list[dict]] = {}
+        for profile in sorted(
+            self._profiles,
+            key=lambda item: (
+                data.provider_label(item).lower(),
+                str(item.get("name") or "").lower(),
+            ),
+        ):
+            grouped.setdefault(data.provider_key(profile).lower(), []).append(profile)
+
+        if not grouped:
+            empty = QLabel("No accounts have been added yet.")
+            empty.setObjectName("muted")
+            layout.addWidget(empty)
+            return
+
+        for provider, accounts in grouped.items():
+            provider_check = QCheckBox(
+                f"{data.provider_label(accounts[0])} ({len(accounts)})"
+            )
+            provider_check.setProperty("visibilityProvider", "true")
+            provider_check.toggled.connect(
+                lambda checked, key=provider: self._set_provider_children_enabled(
+                    key,
+                    checked,
+                )
+            )
+            self._provider_checks[provider] = provider_check
+            layout.addWidget(provider_check)
+
+            for profile in accounts:
+                pid = data.profile_id(profile)
+                account_check = QCheckBox(str(profile.get("name") or "Account"))
+                account_check.setProperty("visibilityAccount", "true")
+                account_check.setContentsMargins(18, 0, 0, 0)
+                account_check.setToolTip(
+                    f"{data.provider_label(profile)} | {data.account_plan(profile)}"
+                )
+                self._account_checks[pid] = account_check
+                layout.addWidget(account_check)
+
+    def _set_provider_children_enabled(self, provider: str, enabled: bool) -> None:
+        for profile in self._profiles:
+            if data.provider_key(profile).lower() == provider:
+                checkbox = self._account_checks.get(data.profile_id(profile))
+                if checkbox is not None:
+                    checkbox.setEnabled(enabled)
+
     def _set_values(self, settings: dict) -> None:
         width_index = self.width_combo.findData(settings["trayWidgetWidth"])
         self.width_combo.setCurrentIndex(max(0, width_index))
@@ -173,6 +289,15 @@ class TrayWidgetSettingsDialog(QDialog):
         self.session.setChecked(settings["trayShowSession"])
         self.refresh.setChecked(settings["trayShowRefresh"])
         self.dashboard.setChecked(settings["trayShowDashboard"])
+        excluded_providers = set(settings["trayExcludedProviders"])
+        excluded_accounts = set(settings["trayExcludedAccounts"])
+        for provider, checkbox in self._provider_checks.items():
+            checkbox.blockSignals(True)
+            checkbox.setChecked(provider not in excluded_providers)
+            checkbox.blockSignals(False)
+            self._set_provider_children_enabled(provider, checkbox.isChecked())
+        for pid, checkbox in self._account_checks.items():
+            checkbox.setChecked(pid not in excluded_accounts)
 
     def _reset_defaults(self) -> None:
         self._set_values(dict(TRAY_SETTING_DEFAULTS))
@@ -187,6 +312,16 @@ class TrayWidgetSettingsDialog(QDialog):
                 "trayShowSession": self.session.isChecked(),
                 "trayShowRefresh": self.refresh.isChecked(),
                 "trayShowDashboard": self.dashboard.isChecked(),
+                "trayExcludedProviders": [
+                    provider
+                    for provider, checkbox in self._provider_checks.items()
+                    if not checkbox.isChecked()
+                ],
+                "trayExcludedAccounts": [
+                    pid
+                    for pid, checkbox in self._account_checks.items()
+                    if not checkbox.isChecked()
+                ],
             }
         )
 
@@ -325,12 +460,16 @@ class BestNextTrayPopup(QWidget):
     switch_requested = Signal(str)
 
     def __init__(self, theme_manager, settings: dict | None = None) -> None:
-        super().__init__(None, Qt.Popup | Qt.FramelessWindowHint)
+        super().__init__(
+            None,
+            Qt.Popup | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint,
+        )
         self.setObjectName("trayPopup")
         self._settings = normalize_tray_settings(settings)
         self.setFixedWidth(self._settings["trayWidgetWidth"])
         self.setMaximumHeight(370)
         self._tm = theme_manager
+        self._all_profiles: list[dict] = []
         self._profiles: list[dict] = []
         self._ranked: list[dict] = []
         self._selected_id = ""
@@ -458,13 +597,17 @@ class BestNextTrayPopup(QWidget):
         return host, value, bar
 
     def set_profiles(self, profiles: list[dict], in_use_id: str | set[str] = "") -> None:
-        self._profiles = list(profiles)
+        self._all_profiles = list(profiles)
         self._in_use_ids = _in_use_set(in_use_id)
+        self._apply_profile_filter()
+        self._render()
+
+    def _apply_profile_filter(self) -> None:
+        self._profiles = visible_tray_profiles(self._all_profiles, self._settings)
         self._ranked = rank_profiles(self._profiles, self._in_use_ids)
         available_ids = {data.profile_id(profile) for profile in self._ranked}
         if self._selected_id not in available_ids:
             self._selected_id = data.profile_id(self._ranked[0]) if self._ranked else ""
-        self._render()
 
     @property
     def widget_settings(self) -> dict:
@@ -481,6 +624,7 @@ class BestNextTrayPopup(QWidget):
         self.session_label.setVisible(self._settings["trayShowSession"])
         self.session_bar.setVisible(self._settings["trayShowSession"])
         self.footer.setVisible(self._settings["trayShowDashboard"])
+        self._apply_profile_filter()
         self._render_signature = ()
         self._render()
 
@@ -519,8 +663,14 @@ class BestNextTrayPopup(QWidget):
         self._update_summary()
         profile = self._selected_profile()
         if profile is None:
-            self.hero_name.setText("No accounts yet")
-            self.hero_sub.setText("Add an account from the dashboard")
+            has_accounts = bool(self._all_profiles)
+            self.hero_avatar.setVisible(False)
+            self.hero_name.setText("No visible accounts" if has_accounts else "No accounts yet")
+            self.hero_sub.setText(
+                "Change widget settings to include one"
+                if has_accounts
+                else "Add an account from the dashboard"
+            )
             self.hero_status.setText("Idle")
             self.hero_status.set_kind("idle")
             self.weekly_value.setText("-")
@@ -528,7 +678,9 @@ class BestNextTrayPopup(QWidget):
             self.weekly_bar.set_percent_left(None)
             self.session_bar.set_percent_left(None)
             self.switch_button.setEnabled(False)
+            self.switch_button.setText("No account selected")
         else:
+            self.hero_avatar.setVisible(True)
             self.hero_avatar.set_identity(
                 data.provider_color(profile),
                 data.provider_monogram(profile),
@@ -577,7 +729,10 @@ class BestNextTrayPopup(QWidget):
             return
         total = len(self._profiles)
         ready = sum(1 for profile in self._profiles if data.account_state(profile) == "ready")
-        self.summary.setText(f"{ready} ready | {total} account{'s' if total != 1 else ''}")
+        if self._all_profiles and not total:
+            self.summary.setText("No accounts selected")
+        else:
+            self.summary.setText(f"{ready} ready | {total} account{'s' if total != 1 else ''}")
 
     def _rebuild_next_rows(self) -> None:
         while self.next_layout.count():
@@ -725,10 +880,14 @@ class TrayController(QObject):
         self.popup_opening.emit()
         self.popup.select_best()
         self.popup.adjustSize()
-        self._position_popup()
         self.popup.show()
         self.popup.raise_()
         self.popup.activateWindow()
+        # Windows can apply its own first-show geometry to Qt.Popup windows.
+        # Position after showing, then once more after the native frame settles.
+        self._position_popup()
+        QTimer.singleShot(0, self._reposition_visible_popup)
+        QTimer.singleShot(80, self._reposition_visible_popup)
 
     def hide_popup(self) -> None:
         if self.popup is not None:
@@ -757,11 +916,19 @@ class TrayController(QObject):
         elif reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.restore_requested.emit()
 
+    def _reposition_visible_popup(self) -> None:
+        if self.popup is None or not self.popup.isVisible():
+            return
+        self.popup.adjustSize()
+        self._position_popup()
+        self.popup.raise_()
+
     def _position_popup(self) -> None:
         if self.popup is None:
             return
         tray_rect = self.tray.geometry() if self.tray is not None else None
-        screen = QApplication.screenAt(tray_rect.center()) if tray_rect and tray_rect.isValid() else None
+        anchor = tray_rect.center() if tray_rect and tray_rect.isValid() else QCursor.pos()
+        screen = QApplication.screenAt(anchor)
         screen = screen or QApplication.primaryScreen()
         if screen is None:
             return
@@ -769,8 +936,8 @@ class TrayController(QObject):
         screen_rect = screen.geometry()
         width = self.popup.width()
         height = self.popup.height()
-        right_side = not tray_rect or not tray_rect.isValid() or tray_rect.center().x() >= screen_rect.center().x()
-        bottom_side = not tray_rect or not tray_rect.isValid() or tray_rect.center().y() >= screen_rect.center().y()
+        right_side = anchor.x() >= screen_rect.center().x()
+        bottom_side = anchor.y() >= screen_rect.center().y()
         x = available.right() - width - 8 if right_side else available.left() + 8
         y = available.bottom() - height - 8 if bottom_side else available.top() + 8
         x = max(available.left() + 4, min(x, available.right() - width - 4))
