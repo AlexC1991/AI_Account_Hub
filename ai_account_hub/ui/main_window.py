@@ -1,8 +1,8 @@
-"""Frameless main window: title bar + persistent app header + stacked screens.
+"""Standalone Hub window: custom chrome, Accounts dashboard, tray and timers.
 
-Screen switching is a QStackedWidget.setCurrentIndex() — both screens stay
-alive and keep their state; nothing is torn down and rebuilt when you move
-between Coding and Accounts (the core flow requirement).
+The shell retains a QStackedWidget for future top-level surfaces, but this
+public build mounts only Accounts. The disabled Coding selector is a visual
+placeholder and never constructs the removed workbench.
 """
 
 from __future__ import annotations
@@ -177,6 +177,9 @@ class MainWindow(QWidget):
         self._tray_controller.notification_settings_requested.connect(
             self._open_notification_settings
         )
+        self._tray_controller.notification_activated.connect(
+            self._open_notification_profile
+        )
 
     def _sync_tray_theme(self) -> None:
         icon = network_icon(self.theme.tokens["accent"])
@@ -223,11 +226,7 @@ class MainWindow(QWidget):
         if self._tray_controller is not None:
             self._tray_controller.set_profiles(current, active_ids)
             for notification in self._notification_monitor.evaluate(current, active_ids):
-                self._tray_controller.show_notification(
-                    notification.title,
-                    notification.message,
-                    notification.kind,
-                )
+                self._tray_controller.show_account_notification(notification)
 
     def _show_best_next(self) -> None:
         if self._tray_controller is not None:
@@ -258,7 +257,7 @@ class MainWindow(QWidget):
         dialog.test_requested.connect(
             lambda: self._tray_controller.show_notification(
                 "AI Account Hub notifications",
-                "System notifications are working.",
+                "Signal Rail notifications are working.",
                 "info",
                 7000,
             )
@@ -269,6 +268,13 @@ class MainWindow(QWidget):
         self.settings.update(selected)
         data.save_settings(self.settings)
         self._notification_monitor.apply_settings(selected)
+
+    def _open_notification_profile(self, pid: str) -> None:
+        # Signal Rail cards carry only a profile ID; restore the dashboard first
+        # and let AccountsScreen perform its normal selection/update flow.
+        self._restore_from_tray()
+        if pid:
+            self.accounts.select(pid)
 
     def _restore_from_tray(self) -> None:
         if self._tray_controller is not None:

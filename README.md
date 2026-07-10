@@ -70,13 +70,12 @@ More images live in [`screenshots/`](screenshots/). Use **Help → View demo
   sessions isolated per paid account.
 - Runtime icon discovery from installed provider apps, with optional environment overrides.
 - Compact Best Next system-tray widget with per-provider/account visibility controls.
-- Native Windows warnings when the active account is nearly exhausted or reaches a limit, plus reset/ready notifications for every account.
+- Hub-styled Signal Rail warnings when the active account is nearly exhausted or reaches a limit, plus reset/ready notifications for every account.
 
 ## Release Status
 
 The Accounts dashboard is the supported public surface for this release. The
-native-passthrough Coding workbench is present in the codebase but disabled in
-the UI until it is complete.
+earlier Coding workbench is not included in the current public application.
 
 ## Run
 
@@ -113,22 +112,26 @@ py -3 main.py
 
 The app is the `ai_account_hub` package: the PySide6 (Qt) front-end is in
 `ai_account_hub\ui\`, and the shared, Tk-free backend is in `ai_account_hub\core\`
-(`hub_core.py`, `provider_discovery.py`). Native provider transports live in
-`ai_account_hub\harness\`.
+(`hub_core.py`, `provider_discovery.py`). Provider refresh, desktop switching,
+and launch actions live in `engine.py` and `engine_claude_desktop.py`; the tray
+widget and custom Signal Rail notifications live under `ai_account_hub\ui\`.
 
 ## Platform support
 
-The app is **Windows-first** today. Provider discovery and all base paths are
-already cross-platform (they resolve from `Path.home()` / environment), but the
-title bar, desktop/process control, some state readers, and the Windows-only
-browser cookie-seeding still need per-OS adapters before macOS/Linux can be
-called supported. The full, current porting plan — including the Windows-specific
-code inventory and a Windows→macOS→Linux path-mapping table — is in
+The app is **Windows-first** today. Provider discovery and most Qt UI code are
+already cross-platform, but desktop/process control, packaged-resource paths,
+some state readers, tray/notification placement, and the Windows-only browser
+cookie seeding still need target-OS adapters and native testing before macOS or
+Linux can be called supported. The current source-launch, standalone packaging,
+system-tray, Signal Rail, and acceptance-test plan is in
 [`docs/PORTING_MACOS_LINUX.md`](docs/PORTING_MACOS_LINUX.md).
 
 ## Provider Discovery
 
-`Start-AI-Account-Hub.bat` runs a clean provider scan before every GUI launch. A direct Python launch also scans. The **Reload** command scans again, so tools installed while the hub is open can be picked up without editing `profiles.json`.
+`Start-AI-Account-Hub.bat` runs a clean provider scan before every GUI launch,
+and a direct Python launch also scans when `HubEngine` starts. Restart the Hub
+after installing a new provider. **Reload** refreshes saved profiles/account
+data; it does not maintain a separate installation-discovery cache.
 
 Discovery precedence is deterministic:
 
@@ -221,7 +224,7 @@ Antigravity structured turns require a healthy standalone `agy` command. If only
 Discovery proves that an executable exists and, where practical, that `--version` responds. It does not prove that an account is authenticated. Login and usage probes remain profile-specific and are performed through the official provider tools.
 
 No operating-system reboot is required after installing a provider. Restart the
-Hub or use **Reload** to run the same clean scan again.
+Hub to run the clean installation scan again.
 
 ## Development
 

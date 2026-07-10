@@ -1,7 +1,8 @@
-"""Application bootstrap for AI Account Hub (PySide6 / Qt).
+"""Application bootstrap shared by source and packaged standalone launches.
 
 Prefer launching via ``py -3 main.py`` from the repo root, or ``python -m
-ai_account_hub``. Both resolve to :func:`main` here.
+ai_account_hub``. Frozen macOS/Linux/Windows builds resolve to :func:`main`
+through the same thin entry point.
 """
 
 from __future__ import annotations

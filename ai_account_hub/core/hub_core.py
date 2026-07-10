@@ -137,6 +137,9 @@ PROFILE_DEFAULTS = {
     "lastLimitsRefreshUtc": "",
     "lastLimitsError": "",
     "lastUsageError": "",
+    "rateLimitDiagnostics": {},
+    "lastRateLimitGuardUtc": "",
+    "lastRateLimitGuardReason": "",
     "accountName": "",
     "accountEmail": "",
     "accountType": "",
@@ -528,8 +531,8 @@ def provider_capability(profile: dict) -> dict[str, str]:
                 "label": "Desktop session" if captured else "Desktop login needed",
                 "state": "ready" if captured else "login",
                 "detail": (
-                    "Claude Desktop session captured. Claude Code CLI, coding transport, "
-                    "limits, and usage probes are unavailable for this Desktop-only profile."
+                    "Claude Desktop session captured. Claude Code CLI, limits, and usage "
+                    "probes are unavailable for this Desktop-only profile."
                     if captured else
                     "Use Desktop Login once. AI Account Hub will bind and save the resulting "
                     "Claude Desktop identity without requiring Claude Code."
@@ -1238,6 +1241,68 @@ def resolve_claude_weekly_reset(probe_reset: str, daily_buckets: list, stored_es
     return str(stored_estimate or ""), "stored"
 
 
+_CODEX_LIMIT_SNAPSHOT_FIELDS = (
+    "limitReachedType",
+    "shortLimitLabel",
+    "shortLimitUsedPercent",
+    "shortLimitResetUtc",
+    "weeklyLimitLabel",
+    "weeklyLimitUsedPercent",
+    "weeklyLimitResetUtc",
+    "weeklyResetEstimateUtc",
+    "weeklyResetEstimateSource",
+)
+_CODEX_IMPOSSIBLE_ROLLOVER_DROP = 25.0
+
+
+def _codex_snapshot_guard_until(profile: dict, result: dict) -> dt.datetime | None:
+    """Return the known future reset that makes a new sample impossible.
+
+    Codex app-server can briefly return a newly initialized 0%-used window while
+    the real window is still active. Used percentage cannot fall sharply before
+    the provider's previously advertised reset. A provider reset credit is the
+    one supported way that rollover can legitimately happen early.
+    """
+    if (
+        provider_key(profile) != "codex"
+        or str(result.get("resetOutcome") or "") == "reset"
+    ):
+        return None
+    rate_limits = (
+        result.get("rateLimits")
+        if isinstance(result.get("rateLimits"), dict)
+        else {}
+    )
+    if str(rate_limits.get("rateLimitReachedType") or "").strip():
+        return None
+
+    now = dt.datetime.now(dt.timezone.utc)
+    impossible_until: list[dt.datetime] = []
+    for used_key, reset_key, incoming_key in (
+        ("shortLimitUsedPercent", "shortLimitResetUtc", "shortWindow"),
+        ("weeklyLimitUsedPercent", "weeklyLimitResetUtc", "weeklyWindow"),
+    ):
+        reset = parse_iso_datetime(profile.get(reset_key))
+        if reset is None or reset <= now:
+            continue
+        previous_used = sanitize_float(profile.get(used_key))
+        incoming_window = rate_limits.get(incoming_key)
+        incoming_used = (
+            sanitize_float(incoming_window.get("usedPercent"))
+            if isinstance(incoming_window, dict)
+            else None
+        )
+        exhausted_block_cleared = is_limit_exhausted(previous_used)
+        impossible_rollover = (
+            previous_used is not None
+            and incoming_used is not None
+            and previous_used - incoming_used >= _CODEX_IMPOSSIBLE_ROLLOVER_DROP
+        )
+        if exhausted_block_cleared or impossible_rollover:
+            impossible_until.append(reset)
+    return max(impossible_until) if impossible_until else None
+
+
 def set_profile_limits_from_result(profile: dict, result: dict) -> None:
     profile["lastLimitsRefreshUtc"] = iso_utc_now()
     if not result.get("ok"):
@@ -1250,6 +1315,15 @@ def set_profile_limits_from_result(profile: dict, result: dict) -> None:
 
     profile["lastLimitsError"] = ""
     rate_limits = result.get("rateLimits") or {}
+    previous_limit_snapshot = {
+        key: profile.get(key)
+        for key in _CODEX_LIMIT_SNAPSHOT_FIELDS
+    }
+    guard_until = _codex_snapshot_guard_until(profile, result)
+    diagnostics = result.get("rateLimitDiagnostics")
+    profile["rateLimitDiagnostics"] = (
+        diagnostics if isinstance(diagnostics, dict) else {}
+    )
     if rate_limits.get("planType") is not None:
         profile["accountPlan"] = str(rate_limits.get("planType") or "")
     # Refresh the account type whenever the probe reports one, independent of
@@ -1291,3 +1365,22 @@ def set_profile_limits_from_result(profile: dict, result: dict) -> None:
     estimate, source = get_weekly_reset_estimate(profile, result)
     profile["weeklyResetEstimateUtc"] = estimate
     profile["weeklyResetEstimateSource"] = source
+
+    if guard_until is not None:
+        # Keep the old windows, reached flag, and reset estimate together. Mixing
+        # one old window with one placeholder window would create a state that
+        # Codex never reported and could still trigger a false reset notice.
+        for key, value in previous_limit_snapshot.items():
+            profile[key] = value
+        reason = (
+            "Ignored an early Codex rollover snapshot before "
+            f"{guard_until.isoformat()}."
+        )
+        profile["lastRateLimitGuardUtc"] = iso_utc_now()
+        profile["lastRateLimitGuardReason"] = reason
+        result["rateLimitGuard"] = {
+            "preservedPreviousSnapshot": True,
+            "untilUtc": guard_until.isoformat(),
+        }
+    else:
+        profile["lastRateLimitGuardReason"] = ""

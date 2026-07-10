@@ -1,8 +1,8 @@
-"""AI Account Hub launcher.
+"""AI Account Hub source and frozen-application entry point.
 
 Thin entry point so the app can be started with ``py -3 main.py`` from the repo
 root. The real bootstrap lives in :mod:`ai_account_hub.app`. Equivalent to
-``python -m ai_account_hub``.
+``python -m ai_account_hub``; standalone packagers should target this file too.
 """
 
 from __future__ import annotations
@@ -13,7 +13,8 @@ import sys
 import traceback
 from pathlib import Path
 
-# Make the package importable when run as a loose script (repo root on sys.path).
+# Make the package importable from a source checkout. Frozen builds already
+# include the package, so inserting their resolved entry directory is harmless.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 

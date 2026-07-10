@@ -1,4 +1,4 @@
-"""Native account-limit notification rules and their settings dialog."""
+"""Account-limit Signal Rail rules and their settings dialog."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ai_account_hub import core as L
 from ai_account_hub import data
 from ai_account_hub.ui.widgets import make_button
 
@@ -75,29 +76,57 @@ class AccountNotification:
     title: str
     message: str
     kind: str = "info"
+    profile_id: str = ""
+    provider_key: str = ""
+    provider_label: str = "AI Account Hub"
+    account_name: str = "AI Account Hub"
+    value_text: str = ""
+    percent_left: float | None = None
+    meta: str = ""
 
 
 @dataclass(frozen=True)
 class _AccountSnapshot:
     name: str
-    provider: str
+    provider_key: str
+    provider_label: str
     state: str
     weekly_left: float | None
     session_left: float | None
+    weekly_reset: str
+    session_reset: str
+    ready_countdown: str
+
+
+def _countdown(raw: object) -> str:
+    value = str(L.format_countdown(raw) or "").strip()
+    return "" if value in {"", "-", "now"} else value
 
 
 def _snapshot(profile: dict) -> _AccountSnapshot:
     return _AccountSnapshot(
         name=str(profile.get("name") or "Account"),
-        provider=data.provider_label(profile),
+        provider_key=data.provider_key(profile),
+        provider_label=data.provider_label(profile),
         state=data.account_state(profile),
         weekly_left=data.percent_left(profile.get("weeklyLimitUsedPercent")),
         session_left=data.percent_left(profile.get("shortLimitUsedPercent")),
+        weekly_reset=_countdown(
+            profile.get("weeklyResetEstimateUtc")
+            or profile.get("weeklyLimitResetUtc")
+        ),
+        session_reset=_countdown(profile.get("shortLimitResetUtc")),
+        ready_countdown=str(L.ready_countdown(profile) or "").strip(),
     )
 
 
 class AccountNotificationMonitor:
-    """Detect meaningful account transitions without repeating alerts."""
+    """Detect meaningful account transitions without repeating alerts.
+
+    The first profile set primes the monitor. Later calls compare complete
+    refresh snapshots, while latches prevent a low account from warning again
+    until it has recovered above the configured threshold plus hysteresis.
+    """
 
     def __init__(self, settings: dict | None = None) -> None:
         self._settings = normalize_notification_settings(settings)
@@ -185,22 +214,36 @@ class AccountNotificationMonitor:
         active = pid in active_ids
         newly_active = active and pid not in self._active_ids
 
+        # A reset is inferred from a large increase in percentage left. Codex's
+        # backend guards impossible pre-reset rollovers before they reach this
+        # monitor, so this layer can stay provider-neutral.
         reset_parts: list[str] = []
+        reset_values: list[float] = []
         if self._did_reset(before.session_left, now.session_left, threshold):
             reset_parts.append(f"5-hour usage is back to {now.session_left:.0f}% left")
+            reset_values.append(float(now.session_left))
         if self._did_reset(before.weekly_left, now.weekly_left, threshold):
             reset_parts.append(f"weekly usage is back to {now.weekly_left:.0f}% left")
+            reset_values.append(float(now.weekly_left))
         became_ready = before.state == "not_ready" and now.state == "ready"
         if self._settings["notificationReadyEnabled"] and (reset_parts or became_ready):
             if reset_parts:
-                message = f"{now.name} ({now.provider}): {'; '.join(reset_parts)}."
+                message = f"{'; '.join(reset_parts)}."
             else:
-                message = f"{now.name} ({now.provider}) is ready to use again."
+                message = "This account is ready to use again."
+            percent = max(reset_values) if reset_values else None
             events.append(
                 AccountNotification(
                     "Account ready again",
                     message,
-                    "info",
+                    "success",
+                    profile_id=pid,
+                    provider_key=now.provider_key,
+                    provider_label=now.provider_label,
+                    account_name=now.name,
+                    value_text=f"{percent:.0f}%" if percent is not None else "Ready",
+                    percent_left=percent,
+                    meta="Ready to use",
                 )
             )
 
@@ -213,17 +256,42 @@ class AccountNotificationMonitor:
             events.append(
                 AccountNotification(
                     "Active account limit reached",
-                    f"{now.name} ({now.provider}) is no longer ready. Choose another account in AI Account Hub.",
-                    "warning",
+                    "This account is no longer ready. Choose another account.",
+                    "danger",
+                    profile_id=pid,
+                    provider_key=now.provider_key,
+                    provider_label=now.provider_label,
+                    account_name=now.name,
+                    value_text="0%",
+                    percent_left=0.0,
+                    meta=(
+                        f"Ready in {now.ready_countdown}"
+                        if now.ready_countdown
+                        else "Switch account"
+                    ),
                 )
             )
             for label in ("weekly", "session"):
                 self._low_latches.add((pid, label))
         elif active and now.state == "ready":
             low_parts: list[str] = []
-            for label, caption, previous, value in (
-                ("session", "5-hour", before.session_left, now.session_left),
-                ("weekly", "weekly", before.weekly_left, now.weekly_left),
+            low_labels: list[str] = []
+            low_values: list[tuple[float, str]] = []
+            for label, caption, previous, value, reset in (
+                (
+                    "session",
+                    "5-hour",
+                    before.session_left,
+                    now.session_left,
+                    now.session_reset,
+                ),
+                (
+                    "weekly",
+                    "weekly",
+                    before.weekly_left,
+                    now.weekly_left,
+                    now.weekly_reset,
+                ),
             ):
                 key = (pid, label)
                 if value is not None and value > threshold + RECOVERY_HYSTERESIS:
@@ -241,13 +309,32 @@ class AccountNotificationMonitor:
                     and (crossed or newly_active)
                 ):
                     low_parts.append(f"{caption} {value:.0f}% left")
+                    low_labels.append(label)
+                    low_values.append((float(value), reset))
                     self._low_latches.add(key)
             if low_parts:
+                percent, reset = min(low_values, key=lambda item: item[0])
+                if len(low_labels) > 1:
+                    title = "Account nearly exhausted"
+                    message = "Both usage windows are below the warning threshold."
+                elif low_labels[0] == "weekly":
+                    title = "Weekly usage running low"
+                    message = f"{percent:.0f}% remains in this weekly window."
+                else:
+                    title = "5-hour limit running low"
+                    message = f"{percent:.0f}% remains in the active session."
                 events.append(
                     AccountNotification(
-                        "Active account almost finished",
-                        f"{now.name} ({now.provider}): {', '.join(low_parts)}.",
+                        title,
+                        message,
                         "warning",
+                        profile_id=pid,
+                        provider_key=now.provider_key,
+                        provider_label=now.provider_label,
+                        account_name=now.name,
+                        value_text=f"{percent:.0f}%",
+                        percent_left=percent,
+                        meta=f"Resets in {reset}" if reset else "Usage running low",
                     )
                 )
 
@@ -282,7 +369,7 @@ class NotificationSettingsDialog(QDialog):
         layout.setContentsMargins(18, 18, 18, 16)
         layout.setSpacing(12)
 
-        title = QLabel("System notifications")
+        title = QLabel("Hub notifications")
         title.setObjectName("dialogTitle")
         layout.addWidget(title)
         note = QLabel(
@@ -292,7 +379,7 @@ class NotificationSettingsDialog(QDialog):
         note.setWordWrap(True)
         layout.addWidget(note)
 
-        self.enabled = QCheckBox("Enable Windows notifications")
+        self.enabled = QCheckBox("Enable Signal Rail notifications")
         self.enabled.toggled.connect(self._update_enabled)
         layout.addWidget(self.enabled)
 

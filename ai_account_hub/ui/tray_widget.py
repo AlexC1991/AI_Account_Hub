@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
 
 from ai_account_hub import core as L
 from ai_account_hub import data
+from ai_account_hub.ui.account_notifications import AccountNotification
+from ai_account_hub.ui.signal_rail import SignalRailManager
 from ai_account_hub.ui.tokens import severity_color
 from ai_account_hub.ui.widgets import (
     Avatar,
@@ -764,7 +766,11 @@ class BestNextTrayPopup(QWidget):
 
 
 class TrayController(QObject):
-    """Own the native tray icon, menu, popup placement and activation flow."""
+    """Own the optional OS tray entry, popup, and notification delivery.
+
+    The controller still exists without a tray host so Signal Rail can work,
+    but ``available`` remains false and the main window will not hide itself.
+    """
 
     restore_requested = Signal()
     refresh_requested = Signal()
@@ -774,6 +780,7 @@ class TrayController(QObject):
     popup_opening = Signal()
     settings_requested = Signal()
     notification_settings_requested = Signal()
+    notification_activated = Signal(str)
 
     def __init__(
         self,
@@ -790,6 +797,14 @@ class TrayController(QObject):
         self.menu: QMenu | None = None
         self.popup: BestNextTrayPopup | None = None
         self.auto_action = None
+        self._toast_manager = SignalRailManager(
+            self._tm.tokens,
+            anchor_rect=self._tray_geometry,
+            parent=self,
+        )
+        self._toast_manager.activated.connect(
+            lambda pid: self.notification_activated.emit(pid)
+        )
         if QSystemTrayIcon.isSystemTrayAvailable():
             self._build(bool(auto_refresh))
 
@@ -851,6 +866,7 @@ class TrayController(QObject):
             self.tray.setIcon(icon)
         if self.popup is not None:
             self.popup.set_theme(tokens)
+        self._toast_manager.set_theme(tokens)
 
     def set_refreshing(self, active: bool) -> None:
         if self.popup is not None:
@@ -913,17 +929,53 @@ class TrayController(QObject):
         kind: str = "info",
         timeout_ms: int = 9000,
     ) -> bool:
+        notification = AccountNotification(
+            str(title),
+            str(message),
+            str(kind),
+            value_text=("Ready" if kind == "success" else "Notice"),
+            percent_left=(100.0 if kind == "success" else None),
+            meta="AI Account Hub",
+        )
+        return self.show_account_notification(notification, timeout_ms)
+
+    def show_account_notification(
+        self,
+        notification: AccountNotification,
+        timeout_ms: int | None = None,
+    ) -> bool:
+        # Signal Rail is the branded primary surface. Native messages are only
+        # a best-effort fallback because OS notification settings may suppress
+        # them or render them without the account/quota context.
+        if self._toast_manager.show_notification(notification, timeout_ms):
+            return True
+        return self._show_native_notification(
+            notification.title,
+            notification.message,
+            notification.kind,
+            timeout_ms or 9000,
+        )
+
+    def _show_native_notification(
+        self,
+        title: str,
+        message: str,
+        kind: str,
+        timeout_ms: int,
+    ) -> bool:
         if self.tray is None or not QSystemTrayIcon.supportsMessages():
             return False
         icon = (
             QSystemTrayIcon.MessageIcon.Warning
-            if kind == "warning"
+            if kind in {"warning", "danger"}
             else QSystemTrayIcon.MessageIcon.Information
         )
         self.tray.showMessage(str(title), str(message), icon, int(timeout_ms))
         return True
 
     def minimize(self, window: QWidget) -> bool:
+        # Never strand the user with a hidden window when the desktop has no
+        # system tray (common on some Linux environments).
         if not self.available:
             return False
         self.hide_popup()
@@ -931,10 +983,17 @@ class TrayController(QObject):
         return True
 
     def close(self) -> None:
+        self._toast_manager.close_all()
         if self.popup is not None:
             self.popup.close()
         if self.tray is not None:
             self.tray.hide()
+
+    def _tray_geometry(self) -> QRect | None:
+        if self.tray is None:
+            return None
+        geometry = self.tray.geometry()
+        return geometry if geometry.isValid() else None
 
     def _activated(self, reason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:

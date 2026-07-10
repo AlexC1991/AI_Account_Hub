@@ -5,7 +5,8 @@ This document defines how AI Account Hub locates official provider software. It 
 ## Goals
 
 - Rescan on every launcher start and every direct GUI start.
-- Rescan when the user selects Reload.
+- Keep Reload/profile refresh separate from installation discovery unless the
+  UI explicitly runs the shared scanner again.
 - Support standard, per-user, package-manager, portable, and explicitly overridden installs.
 - Keep one discovery implementation shared by launchers, the GUI, diagnostics, and tests.
 - Record enough evidence to troubleshoot a missing provider without collecting credentials.
@@ -21,6 +22,8 @@ This document defines how AI Account Hub locates official provider software. It 
 
 ## Startup Contract
 
+### Windows source launcher
+
 `Start-AI-Account-Hub.bat` must:
 
 1. Resolve a Python 3 interpreter.
@@ -29,14 +32,28 @@ This document defines how AI Account Hub locates official provider software. It 
 4. Start the GUI even if preflight fails.
 5. Hand the normal GUI process to `pythonw.exe` and exit so the bootstrap CMD process does not remain in the taskbar. `AI_HUB_CONSOLE=1` preserves the synchronous console path for diagnostics.
 
+### Direct or packaged standalone launch
+
+`main.py`, `python -m ai_account_hub`, a macOS `.app`, and a Linux packaged
+binary do not depend on the Windows batch file. Their `HubEngine` startup must:
+
+1. Run the shared scanner before provider actions are enabled.
+2. Keep opening the Accounts dashboard when discovery fails.
+3. Resolve any diagnostic report under the external runtime-data root, never inside a
+   read-only application bundle or frozen distribution directory.
+4. Avoid requiring a report file to exist; the in-memory scan is authoritative
+   for the running process.
+
 The GUI must:
 
-1. Reuse a valid launcher report only when `AI_HUB_DISCOVERY_BOOTSTRAPPED=1` and the report is no more than 90 seconds old.
-2. Otherwise perform a new scan and atomically replace the report.
-3. Fall back to compatibility probes if the shared scanner raises an unexpected error.
-4. Rescan unconditionally when Reload is selected.
+1. Perform a fresh shared scan when `HubEngine` is created.
+2. Fall back to compatibility probes if the shared scanner raises an unexpected error.
+3. Treat a launcher-generated report as diagnostics, not auth or runtime state.
 
-This means a provider installed after the hub was downloaded appears on the next launch. A provider installed while the hub is already open appears after Reload.
+This means a provider installed after the Hub was downloaded appears on the
+next launch. The current Reload command reloads profiles/account data; restart
+the Hub after installing a new provider. A future asynchronous Reload rescan may
+call the same shared scanner, but must not introduce a second discovery system.
 
 ## Resolution Precedence
 
@@ -153,10 +170,10 @@ Linux:
 A release is ready only when tests prove:
 
 - An invalid override falls back to a valid installation.
-- A second scan finds a binary created after the first scan.
+- A new Hub launch finds a binary created after the previous launch.
 - Windows candidates include current official user install roots.
 - macOS and Linux candidates include native user bins and application bundles.
 - Cursor desktop, shell CLI, and agent remain distinct.
-- Reports are atomic, expire correctly, and omit secret environment values.
+- Diagnostic reports are atomic, expire correctly, and omit secret environment values.
 - The root batch launcher invokes discovery before the GUI.
 - A GUI self-test succeeds when using a fresh launcher report.

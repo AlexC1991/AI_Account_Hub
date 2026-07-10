@@ -19,6 +19,11 @@ const child = spawn(codexPath, ["app-server", "--stdio"], {
 let buffer = "";
 let nextId = 1;
 const pending = new Map();
+// A single read is not trustworthy immediately after app-server startup: the
+// server can interleave an empty newly-created window with the enforced one.
+// Five samples give us an odd-sized majority without making refreshes excessive.
+const RATE_LIMIT_SAMPLE_COUNT = 5;
+const RATE_LIMIT_SAMPLE_PAUSE_MS = 120;
 
 function send(method, params = undefined) {
   const id = nextId++;
@@ -61,6 +66,99 @@ function normalizeWindow(window, fallbackLabel) {
 function chooseSnapshot(rateLimits) {
   const byId = rateLimits?.rateLimitsByLimitId;
   return byId?.codex || rateLimits?.rateLimits || null;
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function median(values) {
+  const ordered = values
+    .filter((value) => typeof value === "number" && Number.isFinite(value))
+    .sort((left, right) => left - right);
+  if (!ordered.length) return null;
+  return ordered[Math.floor(ordered.length / 2)];
+}
+
+// Select one real provider snapshot rather than synthesizing fields from
+// different responses. That keeps percentages and reset timestamps coherent.
+function snapshotDistance(snapshot, primaryMedian, secondaryMedian) {
+  let distance = 0;
+  let compared = 0;
+  for (const [window, target] of [
+    [snapshot?.primary, primaryMedian],
+    [snapshot?.secondary, secondaryMedian],
+  ]) {
+    if (target === null) continue;
+    const value = safeNumber(window?.usedPercent);
+    if (value === null) {
+      distance += 200;
+    } else {
+      distance += Math.abs(value - target);
+    }
+    compared += 1;
+  }
+  return compared ? distance : 0;
+}
+
+function selectRateLimitConsensus(samples) {
+  const available = samples
+    .map((value, index) => ({ value, index, snapshot: chooseSnapshot(value) }))
+    .filter((item) => item.snapshot);
+  if (!available.length) {
+    return {
+      value: samples.at(-1) ?? null,
+      diagnostics: { sampleCount: samples.length, usableSamples: 0 },
+    };
+  }
+
+  // Readiness is safety-sensitive, so vote on the provider's reached flag
+  // first. Within that majority, select the sample nearest the median usage;
+  // this rejects both blank-window and stale-usage outliers.
+  const blockedCount = available.filter(
+    (item) => Boolean(item.snapshot.rateLimitReachedType),
+  ).length;
+  const majorityBlocked = blockedCount > available.length / 2;
+  const candidates = available.filter(
+    (item) => Boolean(item.snapshot.rateLimitReachedType) === majorityBlocked,
+  );
+  const primaryMedian = median(
+    candidates.map((item) => safeNumber(item.snapshot.primary?.usedPercent)),
+  );
+  const secondaryMedian = median(
+    candidates.map((item) => safeNumber(item.snapshot.secondary?.usedPercent)),
+  );
+  const selected = candidates.reduce((best, item) => {
+    const distance = snapshotDistance(item.snapshot, primaryMedian, secondaryMedian);
+    const newerTie = best && distance === best.distance && item.index > best.item.index;
+    if (!best || distance < best.distance || newerTie) {
+      return { item, distance };
+    }
+    return best;
+  }, null).item;
+
+  return {
+    value: selected.value,
+    diagnostics: {
+      sampleCount: samples.length,
+      usableSamples: available.length,
+      blockedSamples: blockedCount,
+      selectedBlocked: majorityBlocked,
+      selectedIndex: selected.index,
+      disagreement: blockedCount > 0 && blockedCount < available.length,
+    },
+  };
+}
+
+async function readRateLimitConsensus() {
+  const samples = [];
+  for (let index = 0; index < RATE_LIMIT_SAMPLE_COUNT; index += 1) {
+    samples.push(await send("account/rateLimits/read"));
+    if (index + 1 < RATE_LIMIT_SAMPLE_COUNT) {
+      await sleep(RATE_LIMIT_SAMPLE_PAUSE_MS);
+    }
+  }
+  return selectRateLimitConsensus(samples);
 }
 
 function normalizeRateLimits(rateLimits) {
@@ -139,20 +237,30 @@ try {
     capabilities: null,
   });
 
+  // A newly started app-server can briefly return a default, unused rate-limit
+  // window before the selected CODEX_HOME account has finished loading. Force
+  // account initialization before sampling limits; the samples below then
+  // reject any remaining one-off placeholder response.
+  await send("account/read", { refreshToken: false });
+
   let resetOutcome = null;
   if (action === "consume-reset") {
     const reset = await send("account/rateLimitResetCredit/consume", {
       idempotencyKey: randomUUID(),
     });
     resetOutcome = reset?.outcome ?? null;
+    if (resetOutcome === "reset") await sleep(300);
   }
 
   let rateLimits = null;
+  let rateLimitDiagnostics = null;
   let usage = null;
   let usageError = null;
 
   try {
-    rateLimits = await send("account/rateLimits/read");
+    const consensus = await readRateLimitConsensus();
+    rateLimits = consensus.value;
+    rateLimitDiagnostics = consensus.diagnostics;
   } catch (error) {
     throw error;
   }
@@ -169,6 +277,7 @@ try {
     refreshedAtIso: new Date().toISOString(),
     resetOutcome,
     rateLimits: normalizeRateLimits(rateLimits),
+    rateLimitDiagnostics,
     usage: normalizeUsage(usage),
     usageError,
   }));

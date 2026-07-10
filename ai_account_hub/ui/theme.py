@@ -166,6 +166,16 @@ def build_qss(t: dict[str, str]) -> str:
     QLabel#trayMetricValue {{ color: {t['text2']}; font-size: 11px; font-weight: 700; }}
     QPushButton#trayAccountRow {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 7px; padding: 0; text-align: left; }}
     QPushButton#trayAccountRow:hover {{ background: {t['panelHover']}; border-color: {t['borderStrong']}; }}
+
+    /* Signal Rail uses normal theme tokens; severity colors are applied by the
+       toast itself because each notification can have a different tone. */
+    QFrame#signalRailCard {{ background: {t['panel']}; border: 1px solid {t['borderStrong']}; border-radius: 8px; }}
+    QLabel#signalTitle {{ color: {t['text']}; font-size: 12px; font-weight: 700; }}
+    QLabel#signalAccount {{ color: {t['text3']}; font-size: 10px; }}
+    QLabel#signalMessage {{ color: {t['text2']}; font-size: 10px; }}
+    QLabel#signalMeta {{ color: {t['text3']}; font-size: 9px; }}
+    QPushButton#signalClose {{ background: transparent; border: none; border-radius: 5px; color: {t['text3']}; font-size: 15px; padding: 0; }}
+    QPushButton#signalClose:hover {{ background: {t['panelHover']}; color: {t['text']}; }}
     QFrame#railDivider {{ background: {t['border']}; }}
     QLabel#sectionLabel {{ color: {t['text3']}; font-size: 10px; font-weight: 700; letter-spacing: 1px; }}
     QLabel#muted {{ color: {t['text2']}; font-size: 11px; }}
