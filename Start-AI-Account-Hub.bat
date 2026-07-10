@@ -59,6 +59,37 @@ if exist "%DISCOVERY%" (
     if not errorlevel 1 set "AI_HUB_DISCOVERY_BOOTSTRAPPED=1"
 )
 
+rem Keep an opt-in console path for development and troubleshooting. Normal
+rem launches hand off to pythonw.exe so this bootstrap CMD process can exit and
+rem does not remain in the Windows taskbar while the Qt app is running.
+if /I "%AI_HUB_CONSOLE%"=="1" goto run_console
+
+set "PYTHONW="
+for /f "usebackq delims=" %%I in (`%PYRUN% -c "import sys; from pathlib import Path; print(Path(sys.executable).with_name('pythonw.exe'))"`) do set "PYTHONW=%%I"
+if not defined PYTHONW goto pythonw_missing
+if not exist "%PYTHONW%" goto pythonw_missing
+
+if not defined AI_HUB_LAUNCH_LOG (
+    if defined AI_HUB_LAUNCHER_ROOT (
+        set "AI_HUB_LAUNCH_LOG=%AI_HUB_LAUNCHER_ROOT%\logs\ai-account-hub.log"
+    ) else (
+        set "AI_HUB_LAUNCH_LOG=%USERPROFILE%\.codex-account-launcher\logs\ai-account-hub.log"
+    )
+)
+
+start "" "%PYTHONW%" "%APP%"
+if errorlevel 1 (
+    echo AI Account Hub could not start with "%PYTHONW%".
+    pause
+    exit /b 1
+)
+exit /b 0
+
+:pythonw_missing
+echo pythonw.exe was not found beside the selected Python interpreter.
+echo Starting in console mode so the error remains visible.
+
+:run_console
 %PYRUN% "%APP%"
 
 if errorlevel 1 (

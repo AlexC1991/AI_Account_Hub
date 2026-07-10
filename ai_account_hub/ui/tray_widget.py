@@ -773,6 +773,7 @@ class TrayController(QObject):
     exit_requested = Signal()
     popup_opening = Signal()
     settings_requested = Signal()
+    notification_settings_requested = Signal()
 
     def __init__(
         self,
@@ -818,6 +819,10 @@ class TrayController(QObject):
         best_action.triggered.connect(lambda _checked=False: self.show_popup())
         settings_action = self.menu.addAction("Widget settings...")
         settings_action.triggered.connect(lambda _checked=False: self._request_settings())
+        notification_action = self.menu.addAction("Notification settings...")
+        notification_action.triggered.connect(
+            lambda _checked=False: self._request_notification_settings()
+        )
         self.menu.addSeparator()
         refresh_action = self.menu.addAction("Refresh all accounts")
         refresh_action.triggered.connect(lambda _checked=False: self.refresh_requested.emit())
@@ -896,6 +901,27 @@ class TrayController(QObject):
     def _request_settings(self) -> None:
         self.hide_popup()
         self.settings_requested.emit()
+
+    def _request_notification_settings(self) -> None:
+        self.hide_popup()
+        self.notification_settings_requested.emit()
+
+    def show_notification(
+        self,
+        title: str,
+        message: str,
+        kind: str = "info",
+        timeout_ms: int = 9000,
+    ) -> bool:
+        if self.tray is None or not QSystemTrayIcon.supportsMessages():
+            return False
+        icon = (
+            QSystemTrayIcon.MessageIcon.Warning
+            if kind == "warning"
+            else QSystemTrayIcon.MessageIcon.Information
+        )
+        self.tray.showMessage(str(title), str(message), icon, int(timeout_ms))
+        return True
 
     def minimize(self, window: QWidget) -> bool:
         if not self.available:

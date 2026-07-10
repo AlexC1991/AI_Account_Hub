@@ -69,6 +69,8 @@ More images live in [`screenshots/`](screenshots/). Use **Help → View demo
 - Claude Code profiles that keep CLI authentication and captured Desktop
   sessions isolated per paid account.
 - Runtime icon discovery from installed provider apps, with optional environment overrides.
+- Compact Best Next system-tray widget with per-provider/account visibility controls.
+- Native Windows warnings when the active account is nearly exhausted or reaches a limit, plus reset/ready notifications for every account.
 
 ## Release Status
 
@@ -92,6 +94,14 @@ Start the GUI:
 ```bat
 Start-AI-Account-Hub.bat
 ```
+
+The batch file performs the first-run dependency and provider checks, then
+hands the GUI to `pythonw.exe` and exits; it does not keep a CMD window in the
+taskbar while the Hub is running. For troubleshooting, set
+`AI_HUB_CONSOLE=1` before launching to keep console output visible. Hidden-mode
+startup errors are recorded under
+`%USERPROFILE%\.codex-account-launcher\logs\ai-account-hub.log` (or the
+configured `AI_HUB_LAUNCHER_ROOT`).
 
 Or run it directly:
 

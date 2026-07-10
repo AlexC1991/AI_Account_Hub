@@ -24,6 +24,10 @@ from ai_account_hub.ui.tokens import DEFAULT_THEME, THEMES
 from ai_account_hub.ui.widgets import NetworkLogo, SegmentedSlider, Spinner, TitleBar, make_button, network_icon
 from ai_account_hub.ui.screens.accounts_screen import AccountsScreen
 from ai_account_hub.ui.tray_widget import TrayController, TrayWidgetSettingsDialog
+from ai_account_hub.ui.account_notifications import (
+    AccountNotificationMonitor,
+    NotificationSettingsDialog,
+)
 
 
 class MainWindow(QWidget):
@@ -39,6 +43,7 @@ class MainWindow(QWidget):
         self.setMinimumSize(1180, 680)
 
         self.settings = data.load_settings()
+        self._notification_monitor = AccountNotificationMonitor(self.settings)
         self.theme = ThemeManager(
             app,
             str(self.settings.get("theme") or DEFAULT_THEME),
@@ -113,6 +118,7 @@ class MainWindow(QWidget):
         window_menu.addAction("Minimize", self.showMinimized)
         window_menu.addAction("Show Best Next", self._show_best_next)
         window_menu.addAction("Widget settings...", self._open_tray_settings)
+        window_menu.addAction("Notification settings...", self._open_notification_settings)
         window_menu.addAction("Maximize / Restore", self._toggle_maximized)
 
         theme_menu = bar.addMenu("Theme")
@@ -168,6 +174,9 @@ class MainWindow(QWidget):
         self._tray_controller.exit_requested.connect(self.close)
         self._tray_controller.popup_opening.connect(self._sync_tray_profiles)
         self._tray_controller.settings_requested.connect(self._open_tray_settings)
+        self._tray_controller.notification_settings_requested.connect(
+            self._open_notification_settings
+        )
 
     def _sync_tray_theme(self) -> None:
         icon = network_icon(self.theme.tokens["accent"])
@@ -210,8 +219,15 @@ class MainWindow(QWidget):
 
     def _sync_tray_profiles(self, profiles: list[dict] | None = None) -> None:
         current = list(profiles if profiles is not None else self.accounts._profiles)
+        active_ids = self._active_profile_ids(current)
         if self._tray_controller is not None:
-            self._tray_controller.set_profiles(current, self._active_profile_ids(current))
+            self._tray_controller.set_profiles(current, active_ids)
+            for notification in self._notification_monitor.evaluate(current, active_ids):
+                self._tray_controller.show_notification(
+                    notification.title,
+                    notification.message,
+                    notification.kind,
+                )
 
     def _show_best_next(self) -> None:
         if self._tray_controller is not None:
@@ -231,6 +247,28 @@ class MainWindow(QWidget):
         self.settings.update(selected)
         data.save_settings(self.settings)
         self._tray_controller.apply_widget_settings(selected)
+
+    def _open_notification_settings(self) -> None:
+        if self._tray_controller is None:
+            return
+        dialog = NotificationSettingsDialog(
+            self._notification_monitor.settings,
+            parent=self,
+        )
+        dialog.test_requested.connect(
+            lambda: self._tray_controller.show_notification(
+                "AI Account Hub notifications",
+                "System notifications are working.",
+                "info",
+                7000,
+            )
+        )
+        if not dialog.exec():
+            return
+        selected = dialog.values()
+        self.settings.update(selected)
+        data.save_settings(self.settings)
+        self._notification_monitor.apply_settings(selected)
 
     def _restore_from_tray(self) -> None:
         if self._tray_controller is not None:

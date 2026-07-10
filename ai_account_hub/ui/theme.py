@@ -156,6 +156,7 @@ def build_qss(t: dict[str, str]) -> str:
     QFrame#trayHeader {{ background: {t['panel']}; border-bottom: 1px solid {t['border']}; }}
     QFrame#trayFooter {{ background: {t['panel']}; border-top: 1px solid {t['border']}; }}
     QDialog#traySettingsDialog {{ background: {t['panel']}; }}
+    QDialog#notificationSettingsDialog {{ background: {t['panel']}; }}
     QScrollArea#trayVisibilityScroll {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 7px; }}
     QWidget#trayVisibilityHost {{ background: {t['panel2']}; }}
     QLabel#dialogTitle {{ color: {t['text']}; font-size: 16px; font-weight: 700; }}

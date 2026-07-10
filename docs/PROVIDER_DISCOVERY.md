@@ -27,6 +27,7 @@ This document defines how AI Account Hub locates official provider software. It 
 2. Run `provider_discovery.py --write-report --quiet`.
 3. Set `AI_HUB_DISCOVERY_BOOTSTRAPPED=1` only when that preflight succeeds.
 4. Start the GUI even if preflight fails.
+5. Hand the normal GUI process to `pythonw.exe` and exit so the bootstrap CMD process does not remain in the taskbar. `AI_HUB_CONSOLE=1` preserves the synchronous console path for diagnostics.
 
 The GUI must:
 
