@@ -14,7 +14,10 @@ from . import hub_core
 # internally and adds its own functions). Mirrored here too so ``core.NAME``
 # still exposes the full public API regardless of which module a function lives
 # in now.
-from . import history_db, browser, locators, claude_status
+from . import (
+    history_db, browser, locators, claude_status, model_analytics,
+    benchmark_analytics, storage,
+)
 
 # ``mod`` is the underlying hub_core module (historical name from the old
 # ``legacy_backend`` shim). Patch attributes on ``core.mod`` to affect the real
@@ -23,7 +26,10 @@ mod = hub_core
 
 # Mirror every public attribute so ``core.NAME`` works for anything, without
 # maintaining an allow-list. ``core.hub_core.NAME`` / ``core.mod.NAME`` too.
-for _src in (hub_core, history_db, browser, locators, claude_status):
+for _src in (
+    hub_core, history_db, browser, locators, claude_status, model_analytics,
+    benchmark_analytics, storage,
+):
     for _name in dir(_src):
         if not _name.startswith("__"):
             globals()[_name] = getattr(_src, _name)

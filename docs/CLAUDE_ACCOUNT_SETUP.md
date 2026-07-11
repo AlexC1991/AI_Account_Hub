@@ -3,12 +3,12 @@
 AI Account Hub supports two different Claude authentication surfaces. They are
 owned by the official Anthropic applications and do not share login state:
 
-- **Claude Code Login** authenticates the Claude Code CLI and the Hub's Coding
-  workspace.
+- **Claude Code Login** authenticates the isolated Claude Code CLI profile used
+  by the Hub for status, limits, and local model analytics.
 - **Desktop Login** authenticates the Claude Desktop application.
 
-A paid account that will use both Coding and Claude Desktop must complete both
-one-time login flows.
+A paid account that will use both Claude Code and Claude Desktop must complete
+both one-time login flows.
 
 ## Add A Paid Claude Account
 
@@ -47,9 +47,9 @@ and Desktop sessions remain separate.
 
 ## Switch Accounts
 
-- Select a paid account in **Coding** to use its Claude Code CLI profile.
-- Select an account in **Accounts** and press **Open Desktop** to restore its
-  saved Claude Desktop session.
+- Select an account in **Accounts** and press **Open CLI** to use its isolated
+  Claude Code profile.
+- Press **Open Desktop** to restore that account's saved Claude Desktop session.
 
 Switch through the Hub. Do not use Claude's in-app **Log out** command merely
 to change accounts. A provider logout can revoke that session and require

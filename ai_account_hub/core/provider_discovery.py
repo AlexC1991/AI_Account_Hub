@@ -1,10 +1,11 @@
 """Cross-platform discovery for the official provider applications and CLIs.
 
-The account hub never copies provider binaries or credentials. This module only
-maps executable/application locations that already exist on the current
-machine. Discovery is intentionally repeatable so a tool installed after the
-hub can be found on the next launch without editing a profile or repository
-file.
+Discovery normally maps existing installations in place. The one exception is
+the Store-packaged Codex CLI: Windows exposes its physical path through an app
+execution alias but may deny direct process execution from ``WindowsApps``.
+For that package only, discovery stages the signed CLI executable in the Hub's
+machine-local runtime directory. No credentials or provider state are copied.
+Discovery is repeatable so tools installed later are found on the next launch.
 """
 
 from __future__ import annotations
@@ -149,6 +150,71 @@ def windows_appx_locations(env: dict[str, str]) -> dict[str, Path]:
         for row in rows
         if isinstance(row, dict) and row.get("Name") and row.get("InstallLocation")
     }
+
+
+def staged_codex_cli_path(env: dict[str, str], home: Path) -> Path:
+    """Return the machine-local executable path used for Store Codex builds."""
+
+    runtime_root = Path(
+        env.get("AI_HUB_LAUNCHER_ROOT", str(home / ".codex-account-launcher"))
+    ).expanduser()
+    return runtime_root / "provider-tools" / "codex" / "codex.exe"
+
+
+def stage_windows_codex_cli(
+    appx_root: Path | None,
+    env: dict[str, str],
+    home: Path,
+) -> tuple[Path | None, str]:
+    """Stage an executable Store CLI without touching auth or package state.
+
+    ``copy2`` preserves the source timestamp, so normal startup only compares
+    metadata. A changed package is copied to a temporary sibling and atomically
+    replaced; if an older staged CLI is currently running, discovery keeps that
+    runnable copy and reports the deferred update instead of breaking launch.
+    """
+
+    if appx_root is None:
+        return None, ""
+    source = next(
+        (
+            candidate
+            for candidate in (
+                appx_root / "app" / "resources" / "codex.exe",
+                appx_root / "app" / "resources" / "bin" / "codex.exe",
+            )
+            if candidate.is_file()
+        ),
+        None,
+    )
+    if source is None:
+        return None, "The installed Codex package did not expose a CLI executable."
+
+    target = staged_codex_cli_path(env, home)
+    try:
+        source_stat = source.stat()
+        current = target.stat() if target.is_file() else None
+        if (
+            current is not None
+            and current.st_size == source_stat.st_size
+            and current.st_mtime_ns == source_stat.st_mtime_ns
+        ):
+            return target, ""
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+        try:
+            shutil.copy2(source, temporary)
+            os.replace(temporary, target)
+        finally:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return target, ""
+    except OSError as error:
+        if target.is_file():
+            return target, f"Codex CLI staging update was deferred: {error}"
+        return None, f"Codex CLI could not be staged from the installed package: {error}"
 
 
 def resolve_target(
@@ -431,6 +497,16 @@ def discover_provider_tools(
         if current_system == "windows"
         else posix_provider_candidates(current_system, user_home, environment)
     )
+    staged_codex = None
+    codex_stage_warning = ""
+    if current_system == "windows":
+        staged_codex, codex_stage_warning = stage_windows_codex_cli(
+            appx.get("OpenAI.Codex"), environment, user_home
+        )
+        if staged_codex is not None:
+            candidates.setdefault("codex_cli", []).insert(
+                0, (staged_codex, "staged Store Codex CLI")
+            )
 
     def resolve(
         key: str,
@@ -459,7 +535,7 @@ def discover_provider_tools(
             "cli": resolve(
                 "codex_cli",
                 ("AI_HUB_CODEX_CLI_PATH", "CODEX_CLI_PATH"),
-                ("codex.exe", "codex.cmd", "codex"),
+                () if staged_codex is not None else ("codex.exe", "codex.cmd", "codex"),
                 runnable=True,
             ),
             "desktop": resolve("codex_desktop", ("AI_HUB_CODEX_DESKTOP_PATH",), (), directory=mac_apps or current_system == "windows"),
@@ -508,6 +584,8 @@ def discover_provider_tools(
             ),
         },
     }
+    if codex_stage_warning:
+        providers["codex"]["cli"].setdefault("warnings", []).append(codex_stage_warning)
 
     support_dirs = common_cli_dirs(user_home, environment, current_system)
     support = {

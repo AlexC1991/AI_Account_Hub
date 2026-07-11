@@ -121,27 +121,6 @@ def soft(color: str, alpha: float = 0.16) -> str:
     return rgba(color, alpha)
 
 
-def accent_gradient(theme: dict[str, str]) -> str:
-    """Qt QSS diagonal gradient string for the accent CTA surfaces.
-
-    Themes with explicit grad stops use them; the rest use a subtle two-stop
-    gradient derived from the flat accent so every theme still reads as a
-    gradient CTA (the design uses gradients only on primary surfaces).
-    """
-    a = theme.get("accentGradA", theme["accent"])
-    b = theme.get("accentGradB", theme["accent"])
-    c = theme.get("accentGradC")
-    if c:
-        return (
-            "qlineargradient(x1:0, y1:0, x2:1, y2:1, "
-            f"stop:0 {a}, stop:0.5 {b}, stop:1 {c})"
-        )
-    if theme.get("accentGradA"):
-        return f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {a}, stop:1 {b})"
-    # No explicit stops: lighten->accent for a gentle sheen.
-    return f"qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {theme['accent']}, stop:1 {theme['accent']})"
-
-
 def severity_color(theme: dict[str, str], percent_left: float | None) -> str:
     """Design 3a severity: <20 red, 20-49 amber, >=50 green."""
     if percent_left is None:
@@ -161,6 +140,63 @@ def _to_hls(hexcolor: str) -> tuple[float, float, float]:
 def _from_hls(h: float, l: float, s: float) -> str:
     r, g, b = colorsys.hls_to_rgb(h, max(0.0, min(1.0, l)), max(0.0, min(1.0, s)))
     return f"#{round(r * 255):02x}{round(g * 255):02x}{round(b * 255):02x}"
+
+
+def _relative_luminance(color: str) -> float:
+    channels = []
+    for value in hex_to_rgb(color):
+        channel = value / 255
+        channels.append(
+            channel / 12.92
+            if channel <= 0.04045
+            else ((channel + 0.055) / 1.055) ** 2.4
+        )
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def contrast_ratio(first: str, second: str) -> float:
+    """WCAG contrast ratio used by theme tests and accessible token derivation."""
+    high, low = sorted(
+        (_relative_luminance(first), _relative_luminance(second)), reverse=True
+    )
+    return (high + 0.05) / (low + 0.05)
+
+
+def _readable_text(background: str) -> str:
+    return (
+        "#ffffff"
+        if contrast_ratio("#ffffff", background) >= contrast_ratio("#111111", background)
+        else "#111111"
+    )
+
+
+def _contrast_accent(accent: str, background: str, minimum: float = 3.0) -> str:
+    """Darken a light-mode accent until outlines and selected states are visible."""
+    if contrast_ratio(accent, background) >= minimum:
+        return accent
+    hue, lightness, saturation = _to_hls(accent)
+    while lightness > 0.22:
+        lightness -= 0.02
+        candidate = _from_hls(hue, lightness, saturation)
+        if contrast_ratio(candidate, background) >= minimum:
+            return candidate
+    return _from_hls(hue, 0.22, saturation)
+
+
+def _text_safe_accent(accent: str, minimum: float = 4.5) -> str:
+    """Nudge an accent away from the black/white contrast dead zone."""
+    if max(
+        contrast_ratio("#ffffff", accent),
+        contrast_ratio("#111111", accent),
+    ) >= minimum:
+        return accent
+    hue, lightness, saturation = _to_hls(accent)
+    while lightness > 0.18:
+        lightness -= 0.01
+        candidate = _from_hls(hue, lightness, saturation)
+        if contrast_ratio("#ffffff", candidate) >= minimum:
+            return candidate
+    return _from_hls(hue, 0.18, saturation)
 
 
 def light_variant(name: str, dark: dict[str, str]) -> dict[str, str]:
@@ -188,8 +224,13 @@ def light_variant(name: str, dark: dict[str, str]) -> dict[str, str]:
     # Mid-dark, vivid accent: legible as text/outline on white, and white button
     # text sits on it cleanly (so filled CTAs work in every theme).
     ah2, al2, as2 = _to_hls(dark.get("accent", "#2c90e8"))
-    light["accent"] = _from_hls(ah2, min(al2, 0.50), max(as2, 0.5))
-    light["accentText"] = "#ffffff"
+    light["accent"] = _text_safe_accent(
+        _contrast_accent(
+            _from_hls(ah2, min(al2, 0.50), max(as2, 0.5)),
+            light["bg"],
+        )
+    )
+    light["accentText"] = _readable_text(light["accent"])
     # Drop dark-theme gradient stops so light CTAs use the solid darkened accent.
     for grad_key in ("accentGradA", "accentGradB", "accentGradC"):
         light.pop(grad_key, None)
@@ -216,3 +257,8 @@ _HDR_LIFT = 13
 for _theme in THEMES.values():
     for _key in ("bg", "panel", "panel2", "panelHover"):
         _theme[_key] = _lift(_theme[_key], _HDR_LIFT)
+    # Text-bearing selected states use a solid accent. Choose whichever neutral
+    # foreground has the stronger contrast for each theme instead of assuming
+    # every hue can safely carry white text.
+    _theme["accent"] = _text_safe_accent(_theme["accent"])
+    _theme["accentText"] = _readable_text(_theme["accent"])

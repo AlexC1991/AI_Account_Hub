@@ -6,6 +6,9 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+build/
+dist/
+*.egg-info/
 
 # Virtual environments and local env files.
 .venv/
@@ -67,8 +70,13 @@ test_*.py
 
 # Parked/disabled subsystem: the native "Coding" passthrough (transports,
 # history readers, coding view, permission bridge). Kept locally for reference
-# but not part of the shipped Accounts app. See _disabled/README.md.
+# but not part of the shipped Command Center/Accounts app. See _disabled/README.md.
 /_disabled/
 
 # Public docs live at docs/*.md; the private notes subdir stays local.
 /docs/private/
+
+# Local design explorations and implementation working notes. Prototypes may
+# contain fake account/model data and are not part of the public application.
+/prototypes/
+/docs/PERSONAL_MODEL_ANALYTICS_PLAN.md

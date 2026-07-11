@@ -136,7 +136,12 @@ def parse_claude_reset_label(label: object, base: dt.datetime | None = None) -> 
         "%B %d %I %p",
     ):
         try:
-            parsed = dt.datetime.strptime(normalized, fmt).replace(year=now.year)
+            # Parse with an explicit leap-safe year. Python 3.14 warns when a
+            # day/month format has no year because Feb 29 is otherwise
+            # ambiguous, and Python 3.15 will make that behavior stricter.
+            parsed = dt.datetime.strptime(f"2000 {normalized}", f"%Y {fmt}").replace(
+                year=now.year
+            )
             if parsed.astimezone() < now - dt.timedelta(days=1):
                 parsed = parsed.replace(year=now.year + 1)
             candidates.append(parsed)
@@ -257,6 +262,11 @@ def claude_usage_total_tokens(usage: dict) -> int:
 def build_claude_usage_buckets(projects_root: Path = hub_core.CLAUDE_PROJECTS_ROOT) -> list[dict]:
     if not projects_root.exists():
         return []
+    # Claude Code may write the same assistant message into several project
+    # transcripts and may repeat it within one file. Usage is cumulative for
+    # that message ID, so retain the largest non-zero record globally instead
+    # of summing every copy.
+    messages: dict[str, dict] = {}
     buckets: dict[str, dict] = {}
     for path in projects_root.rglob("*.jsonl"):
         try:
@@ -264,7 +274,7 @@ def build_claude_usage_buckets(projects_root: Path = hub_core.CLAUDE_PROJECTS_RO
         except OSError:
             continue
         with handle:
-            for line in handle:
+            for line_number, line in enumerate(handle, 1):
                 try:
                     item = json.loads(line)
                 except json.JSONDecodeError:
@@ -277,14 +287,39 @@ def build_claude_usage_buckets(projects_root: Path = hub_core.CLAUDE_PROJECTS_RO
                 total_tokens = claude_usage_total_tokens(usage)
                 if total_tokens <= 0:
                     continue
-                day = timestamp.date().isoformat()
-                bucket = buckets.setdefault(day, {"date": day, "tokens": 0, "messageCount": 0, "first": timestamp, "last": timestamp})
-                bucket["tokens"] += total_tokens
-                bucket["messageCount"] += 1
-                if timestamp < bucket["first"]:
-                    bucket["first"] = timestamp
-                if timestamp > bucket["last"]:
-                    bucket["last"] = timestamp
+                stable_id = str(
+                    message.get("id")
+                    or item.get("requestId")
+                    or item.get("uuid")
+                    or f"{path}:{line_number}"
+                )
+                current = messages.get(stable_id)
+                if current is None or total_tokens > current["tokens"]:
+                    messages[stable_id] = {
+                        "timestamp": timestamp,
+                        "tokens": total_tokens,
+                    }
+
+    for message in messages.values():
+        timestamp = message["timestamp"]
+        day = timestamp.date().isoformat()
+        total_tokens = int(message["tokens"])
+        bucket = buckets.setdefault(
+            day,
+            {
+                "date": day,
+                "tokens": 0,
+                "messageCount": 0,
+                "first": timestamp,
+                "last": timestamp,
+            },
+        )
+        bucket["tokens"] += total_tokens
+        bucket["messageCount"] += 1
+        if timestamp < bucket["first"]:
+            bucket["first"] = timestamp
+        if timestamp > bucket["last"]:
+            bucket["last"] = timestamp
 
     rows: list[dict] = []
     for day, bucket in sorted(buckets.items()):
@@ -296,9 +331,7 @@ def build_claude_usage_buckets(projects_root: Path = hub_core.CLAUDE_PROJECTS_RO
                 "tokens": int(bucket["tokens"]),
                 "activeMinutes": minutes,
                 "messageCount": int(bucket["messageCount"]),
-                "source": "claude-code-jsonl",
+                "source": "claude-code-jsonl-v2",
             }
         )
     return rows
-
-

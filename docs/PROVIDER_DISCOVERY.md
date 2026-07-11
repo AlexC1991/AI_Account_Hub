@@ -20,6 +20,13 @@ This document defines how AI Account Hub locates official provider software. It 
 - Searching every disk recursively.
 - Guessing quota, plan, or usage data from installation state.
 
+The Store-packaged Codex CLI is one bounded compatibility exception, not an
+installation feature. Windows can expose the package executable through an app
+execution alias while denying direct child-process execution from
+`WindowsApps`. When that package is installed, discovery copies only its signed
+`codex.exe` into the Hub's machine-local `provider-tools/codex` directory. It
+does not copy credentials, sessions, configuration, or any other package file.
+
 ## Startup Contract
 
 ### Windows source launcher
@@ -60,10 +67,11 @@ call the same shared scanner, but must not introduce a second discovery system.
 Each target is resolved independently:
 
 1. Valid explicit `AI_HUB_*_PATH` override
-2. Matching command on the launch process `PATH`
-3. Documented native per-user installation paths
-4. Package-manager, application bundle, AppX, registry, and conventional system paths
-5. Missing
+2. On Windows, the staged CLI from an installed Store Codex package
+3. Matching command on the launch process `PATH`
+4. Documented native per-user installation paths
+5. Package-manager, application bundle, AppX, registry, and conventional system paths
+6. Missing
 
 An invalid override adds a warning and discovery continues. Duplicate candidates are removed using normalized paths.
 
@@ -142,6 +150,10 @@ Windows:
 - Query `PATH`, per-user bins, WinGet links, conventional install roots, App Paths, and relevant AppX packages.
 - Do not recursively scan entire `Program Files` or `WindowsApps`.
 - Accept `.exe`, `.cmd`, `.bat`, and provider-specific `.ps1` launchers where the downstream runner supports them.
+- Stage only the Store package's `app/resources/codex.exe` when present. Compare
+  source size and timestamp on each launch, copy through a temporary sibling,
+  and replace atomically. If a running older copy prevents replacement, keep it
+  available and report the deferred update.
 
 macOS:
 
@@ -172,6 +184,8 @@ A release is ready only when tests prove:
 - An invalid override falls back to a valid installation.
 - A new Hub launch finds a binary created after the previous launch.
 - Windows candidates include current official user install roots.
+- A Store Codex CLI is staged under the configured machine-local runtime root
+  and selected without depending on an old `%LOCALAPPDATA%\OpenAI\Codex\bin`.
 - macOS and Linux candidates include native user bins and application bundles.
 - Cursor desktop, shell CLI, and agent remain distinct.
 - Diagnostic reports are atomic, expire correctly, and omit secret environment values.
