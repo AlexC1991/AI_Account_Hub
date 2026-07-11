@@ -142,6 +142,7 @@ PROFILE_DEFAULTS = {
     "rateLimitDiagnostics": {},
     "lastRateLimitGuardUtc": "",
     "lastRateLimitGuardReason": "",
+    "codexRolloverCandidates": {},
     "accountName": "",
     "accountEmail": "",
     "accountType": "",
@@ -1285,21 +1286,27 @@ _CODEX_LIMIT_SNAPSHOT_FIELDS = (
     "weeklyResetEstimateUtc",
     "weeklyResetEstimateSource",
 )
-_CODEX_IMPOSSIBLE_ROLLOVER_DROP = 25.0
+_CODEX_PROVIDER_RESET_CONFIRM_SECONDS = 8 * 60
 
 
 def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.datetime]:
-    """Return provider windows whose apparent early rollover is impossible.
+    """Return exhausted windows whose apparent early rollover needs confirmation.
 
     Codex app-server can briefly return a newly initialized 0%-used window while
-    the real window is still active. Used percentage cannot fall sharply before
-    the provider's previously advertised reset. A provider reset credit is the
-    one supported way that rollover can legitimately happen early.
+    the real window is still active. Non-exhausted usage may legitimately fall
+    after a provider-side account reset and is accepted immediately. An exhausted
+    window is held only until the same replacement reset survives a later refresh;
+    explicit reset-credit results bypass this guard entirely.
     """
-    if (
-        provider_key(profile) != "codex"
-        or str(result.get("resetOutcome") or "") == "reset"
-    ):
+    candidates = profile.get("codexRolloverCandidates")
+    if not isinstance(candidates, dict):
+        candidates = {}
+    profile["codexRolloverCandidates"] = candidates
+
+    if provider_key(profile) != "codex":
+        return {}
+    if str(result.get("resetOutcome") or "") == "reset":
+        candidates.clear()
         return {}
     rate_limits = (
         result.get("rateLimits")
@@ -1307,6 +1314,7 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
         else {}
     )
     if str(rate_limits.get("rateLimitReachedType") or "").strip():
+        candidates.clear()
         return {}
 
     now = dt.datetime.now(dt.timezone.utc)
@@ -1317,6 +1325,7 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
     ):
         reset = parse_iso_datetime(profile.get(reset_key))
         if reset is None or reset <= now:
+            candidates.pop(window_name, None)
             continue
         previous_used = sanitize_float(profile.get(used_key))
         incoming_window = rate_limits.get(incoming_key)
@@ -1325,14 +1334,43 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
             if isinstance(incoming_window, dict)
             else None
         )
-        exhausted_block_cleared = is_limit_exhausted(previous_used)
-        impossible_rollover = (
-            previous_used is not None
-            and incoming_used is not None
-            and previous_used - incoming_used >= _CODEX_IMPOSSIBLE_ROLLOVER_DROP
+        if not is_limit_exhausted(previous_used) or is_limit_exhausted(incoming_used):
+            candidates.pop(window_name, None)
+            continue
+
+        incoming_reset = iso_from_value(
+            incoming_window.get("resetsAtIso")
+            if isinstance(incoming_window, dict)
+            else None
         )
-        if exhausted_block_cleared or impossible_rollover:
-            guarded[window_name] = reset
+        candidate = candidates.get(window_name)
+        same_candidate = (
+            isinstance(candidate, dict)
+            and str(candidate.get("resetUtc") or "") == incoming_reset
+        )
+        first_seen = (
+            parse_iso_datetime(candidate.get("firstSeenUtc"))
+            if same_candidate
+            else None
+        )
+        confirmed = (
+            first_seen is not None
+            and (now - first_seen).total_seconds()
+            >= _CODEX_PROVIDER_RESET_CONFIRM_SECONDS
+        )
+        if confirmed:
+            candidates.pop(window_name, None)
+            continue
+
+        candidates[window_name] = {
+            "firstSeenUtc": (
+                first_seen.isoformat() if first_seen is not None else now.isoformat()
+            ),
+            "lastSeenUtc": now.isoformat(),
+            "resetUtc": incoming_reset,
+            "usedPercent": incoming_used,
+        }
+        guarded[window_name] = reset
     return guarded
 
 

@@ -25,8 +25,9 @@ Release date: 11 July 2026
   authentication or provider quota.
 - Codex reset credits are shown and usable when OpenAI exposes them.
 - Codex rollover protection now validates the 5-hour and weekly windows
-  independently. An expired session can become ready without accepting an
-  impossible early weekly reset or borrowing the weekly countdown.
+  independently. Non-exhausted provider resets are accepted immediately;
+  exhausted windows require a later confirming refresh unless an explicit reset
+  credit succeeded. Expired sessions never borrow the weekly countdown.
 - Paid Claude Code profiles keep CLI authentication isolated and can capture a
   matching official Claude Desktop session for later switching.
 
