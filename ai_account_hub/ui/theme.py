@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
 
-from ai_account_hub.ui.tokens import THEMES, DEFAULT_THEME, accent_gradient, soft, light_variant
+from ai_account_hub.ui.tokens import THEMES, DEFAULT_THEME, soft, light_variant
 
 
 class ThemeManager(QObject):
@@ -73,7 +73,6 @@ class ThemeManager(QObject):
 
 
 def build_qss(t: dict[str, str]) -> str:
-    grad = accent_gradient(t)
     accent_soft = soft(t["accent"], 0.16)
     accent_soft_hi = soft(t["accent"], 0.24)
     success_soft = soft(t["success"], 0.16)
@@ -96,6 +95,9 @@ def build_qss(t: dict[str, str]) -> str:
     QMenu::item {{ padding: 7px 26px 7px 10px; border-radius: 4px; }}
     QMenu::item:selected {{ background: {accent_soft}; color: {t['text']}; }}
     QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
+    QToolTip {{ background: {t['panel']}; color: {t['text']};
+        border: 1px solid {t['borderStrong']}; border-radius: 6px;
+        padding: 7px 9px; opacity: 255; }}
     QPushButton#winBtn {{ background: transparent; border: none; border-radius: 0; color: {t['text2']}; font-size: 13px; }}
     QPushButton#winBtn:hover {{ background: {t['panelHover']}; }}
     QPushButton#winClose:hover {{ background: #e81123; color: #ffffff; }}
@@ -106,12 +108,12 @@ def build_qss(t: dict[str, str]) -> str:
     QLabel#appSubtitle {{ font-size: 11px; color: {t['text3']}; }}
     QFrame#logoTile {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 10px; }}
 
-    /* segmented Coding|Accounts pill */
+    /* segmented top-level screen selector */
     QFrame#segTabs {{ background: {t['panel2']}; border-radius: 8px; }}
     QPushButton#segTab {{ background: transparent; border: none; border-radius: 6px; padding: 6px 18px;
         color: {t['text2']}; font-size: 12px; font-weight: 600; }}
     QPushButton#segTab:hover {{ color: {t['text']}; }}
-    QPushButton#segTab[active="true"] {{ background: {grad}; color: {t['accentText']}; }}
+    QPushButton#segTab[active="true"] {{ background: {t['accent']}; color: {t['accentText']}; }}
 
     /* ---- Buttons ---- */
     /* Menu buttons render their own "⌄" glyph, so hide Qt's native arrow to
@@ -225,7 +227,7 @@ def build_qss(t: dict[str, str]) -> str:
     QPushButton#chevron:hover {{ background: {t['panelHover']}; }}
     QPushButton#todayBtn {{ background: {accent_soft}; border: 1px solid {t['accent']}; border-radius: 7px; color: {t['accent']}; font-weight: 600; padding: 5px 12px; }}
 
-    /* coding rail nav rows (flat, borderless) */
+    /* flat navigation rows */
     QPushButton#navRow {{ background: transparent; border: none; border-radius: 8px; text-align: left; padding: 9px 10px; color: {t['text']}; font-size: 12px; }}
     QPushButton#navRow:hover {{ background: {t['panelHover']}; }}
     QLabel#kbd {{ color: {t['text3']}; font-size: 10px; }}

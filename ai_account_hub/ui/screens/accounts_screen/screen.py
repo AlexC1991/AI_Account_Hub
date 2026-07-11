@@ -35,7 +35,6 @@ class AccountsScreen(_DataMixin, _ActionsMixin, QWidget):
         self._profiles: list[dict] = []
         self._cards: dict[str, AccountCard] = {}
         self._selected: str | None = None
-        self._coding_active_pid: str | None = None
         self._worker: RefreshWorker | None = None
         self._log_lines: list[str] = []
         self._settings = data.load_settings()
@@ -82,21 +81,14 @@ class AccountsScreen(_DataMixin, _ActionsMixin, QWidget):
         return ""
 
     def _apply_desktop_active(self) -> None:
-        """Mark exactly one 'In use' account. The account loaded in the Coding
-        workbench is the authoritative "account you're using" (works for every
-        provider incl. Claude/Cursor/Antigravity). Only if the workbench has no
-        active account do we fall back to the Codex Desktop marker."""
-        coding_pid = self._coding_active_pid
+        """Mark the Codex account currently loaded in the official desktop app."""
         active = self._desktop_active_name()
         for card in self._cards.values():
-            if coding_pid:
-                in_use = card.pid == coding_pid
-            else:
-                in_use = (
-                    bool(active)
-                    and data.provider_key(card.profile) == "codex"
-                    and str(card.profile.get("name", "")).strip() == active
-                )
+            in_use = (
+                bool(active)
+                and data.provider_key(card.profile) == "codex"
+                and str(card.profile.get("name", "")).strip() == active
+            )
             card.set_in_use(in_use)
 
     def _column(self, width: int | None = None) -> tuple[QWidget, QVBoxLayout]:
@@ -341,4 +333,3 @@ class AccountsScreen(_DataMixin, _ActionsMixin, QWidget):
         scroll.setFixedWidth(350)
         scroll.setWidget(col)
         return scroll
-

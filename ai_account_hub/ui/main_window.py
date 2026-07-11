@@ -1,9 +1,4 @@
-"""Standalone Hub window: custom chrome, Accounts dashboard, tray and timers.
-
-The shell retains a QStackedWidget for future top-level surfaces, but this
-public build mounts only Accounts. The disabled Coding selector is a visual
-placeholder and never constructs the removed workbench.
-"""
+"""Standalone Hub window: Statistics, Accounts, tray, and timers."""
 
 from __future__ import annotations
 
@@ -23,7 +18,9 @@ from ai_account_hub.ui.theme import ThemeManager
 from ai_account_hub.ui.tokens import DEFAULT_THEME, THEMES
 from ai_account_hub.ui.widgets import NetworkLogo, SegmentedSlider, Spinner, TitleBar, make_button, network_icon
 from ai_account_hub.ui.screens.accounts_screen import AccountsScreen
+from ai_account_hub.ui.screens.statistics_screen import StatisticsScreen
 from ai_account_hub.ui.tray_widget import TrayController, TrayWidgetSettingsDialog
+from ai_account_hub.ui.storage_dialog import LocalDataDialog
 from ai_account_hub.ui.account_notifications import (
     AccountNotificationMonitor,
     NotificationSettingsDialog,
@@ -59,11 +56,11 @@ class MainWindow(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # The Accounts dashboard is the single screen. (The native Coding
-        # workbench is parked out of the shipped tree until it is finished.)
         self.stack = QStackedWidget()
         self.accounts = AccountsScreen(self.theme)
-        self.stack.addWidget(self.accounts)   # index 0
+        self.statistics = StatisticsScreen(self.theme)
+        self.stack.addWidget(self.accounts)    # index 0
+        self.stack.addWidget(self.statistics)  # index 1
 
         self.menu_bar = self._build_menu_bar()
         self.titlebar = TitleBar(self, self.theme.tokens["accent"], self.menu_bar)
@@ -73,6 +70,7 @@ class MainWindow(QWidget):
 
         profiles = data.load_profiles()
         self.accounts.set_profiles(profiles)
+        self.statistics.set_profiles(profiles)
         self._setup_system_tray()
         self._sync_tray_profiles(profiles)
 
@@ -80,8 +78,16 @@ class MainWindow(QWidget):
         self.theme.changed.connect(lambda _n: self._logo.set_accent(self.theme.tokens["accent"]))
         self.theme.changed.connect(lambda _n: self._sync_tray_theme())
         self.accounts.activity.connect(self._set_status)
+        self.statistics.activity.connect(self._set_status)
+        self.statistics.history_updated.connect(self.accounts.refresh)
         self.accounts.profiles_changed.connect(self._sync_tray_profiles)
-        self._select_section("accounts")
+        self.accounts.profiles_changed.connect(self.statistics.set_profiles)
+        start_section = (
+            "statistics"
+            if os.environ.get("AI_HUB_DEMO_START_SECTION") == "statistics"
+            else "accounts"
+        )
+        self._select_section(start_section)
         self._clock = QTimer(self)
         self._clock.timeout.connect(self._tick)
         self._clock.start(1000)
@@ -99,6 +105,7 @@ class MainWindow(QWidget):
         file_menu.addAction("Refresh all", self.accounts.refresh_all)
         file_menu.addSeparator()
         file_menu.addAction("Open profile folder", lambda: os.startfile(str(data.LAUNCHER_ROOT)))
+        file_menu.addAction("Local data...", self._open_local_data)
         file_menu.addSeparator()
         file_menu.addAction("Exit", self.close)
 
@@ -111,9 +118,8 @@ class MainWindow(QWidget):
 
         window_menu = bar.addMenu("Window")
         self._menus.append(window_menu)
-        coding_action = window_menu.addAction("Coding (in development)", lambda: None)
-        coding_action.setEnabled(False)  # Coding view isn't ready yet
         window_menu.addAction("Accounts", lambda: self._select_section("accounts"))
+        window_menu.addAction("Statistics", lambda: self._select_section("statistics"))
         window_menu.addSeparator()
         window_menu.addAction("Minimize", self.showMinimized)
         window_menu.addAction("Show Best Next", self._show_best_next)
@@ -189,10 +195,6 @@ class MainWindow(QWidget):
 
     def _active_profile_ids(self, profiles: list[dict]) -> set[str]:
         active_ids: set[str] = set()
-        coding_pid = str(getattr(self.accounts, "_coding_active_pid", "") or "")
-        if coding_pid:
-            active_ids.add(coding_pid)
-
         active_name = self.accounts._desktop_active_name()
         if active_name:
             for profile in profiles:
@@ -247,6 +249,9 @@ class MainWindow(QWidget):
         data.save_settings(self.settings)
         self._tray_controller.apply_widget_settings(selected)
 
+    def _open_local_data(self) -> None:
+        LocalDataDialog(self.theme, self).exec()
+
     def _open_notification_settings(self) -> None:
         if self._tray_controller is None:
             return
@@ -273,6 +278,7 @@ class MainWindow(QWidget):
         # Signal Rail cards carry only a profile ID; restore the dashboard first
         # and let AccountsScreen perform its normal selection/update flow.
         self._restore_from_tray()
+        self._select_section("accounts")
         if pid:
             self.accounts.select(pid)
 
@@ -293,6 +299,7 @@ class MainWindow(QWidget):
     def _switch_from_tray(self, pid: str) -> None:
         if self._tray_controller is not None:
             self._tray_controller.hide_popup()
+        self._select_section("accounts")
         self.accounts.select(pid)
         self.accounts.run_action("desktop")
 
@@ -333,6 +340,7 @@ class MainWindow(QWidget):
         self.setWindowIcon(network_icon(self.theme.tokens["accent"]))
         self._refresh_spin.set_color(self.theme.tokens["accent"])
         self.accounts.apply_theme()
+        self.statistics.apply_theme()
 
     def _open_readme(self) -> None:
         target = Path(__file__).resolve().parents[2] / "README.md"
@@ -363,6 +371,9 @@ class MainWindow(QWidget):
         repo_root = Path(__file__).resolve().parents[2]  # ui/ -> ai_account_hub/ -> repo
         env = dict(os.environ)
         env["AI_HUB_DEMO"] = "1"
+        # Open where the sample is most useful. Accounts remains available via
+        # the segmented switch, so one demo teaches both supported workspaces.
+        env["AI_HUB_DEMO_START_SECTION"] = "statistics"
         try:
             subprocess.Popen(
                 [sys.executable, "-m", "ai_account_hub"],
@@ -421,14 +432,12 @@ class MainWindow(QWidget):
         titlebox.addWidget(sub)
         row.addLayout(titlebox)
 
-        # segmented Coding | Accounts — flush slider with an animated thumb. The
-        # Coding view still needs a lot of work, so it is greyed out and inert
-        # for now; Accounts is the only usable section.
-        self._seg = SegmentedSlider([("Coding", "coding"), ("Accounts", "accounts")], self.theme.tokens)
+        self._seg = SegmentedSlider(
+            [("Accounts", "accounts"), ("Statistics", "statistics")],
+            self.theme.tokens,
+        )
         self._seg.changed.connect(self._select_section)
-        self._seg.set_disabled({"coding"}, "Coding view is still in development")
         self.theme.changed.connect(lambda _n: self._seg.set_theme(self.theme.tokens))
-        self.theme.changed.connect(lambda _n: self._seg.set_disabled({"coding"}, "Coding view is still in development"))
         row.addWidget(self._seg)
         row.addStretch(1)
 
@@ -464,13 +473,10 @@ class MainWindow(QWidget):
         return header
 
     def _select_section(self, key: str) -> None:
-        # Coding is disabled while it's under construction — always fall back to
-        # Accounts so nothing can navigate into the half-finished coding view.
-        if key == "coding":
+        if key not in {"statistics", "accounts"}:
             key = "accounts"
         self._active = key
-        # instant, stateful switch — no rebuild (Accounts is the only screen)
-        self.stack.setCurrentIndex(0)
+        self.stack.setCurrentIndex(0 if key == "accounts" else 1)
         self._seg.set_active(key)  # emit=False → no recursion back into this slot
 
     def _auto_label(self) -> str:
@@ -504,6 +510,7 @@ class MainWindow(QWidget):
     def _reload(self) -> None:
         profiles = data.load_profiles()
         self.accounts.set_profiles(profiles)
+        self.statistics.set_profiles(profiles)
         self._sync_tray_profiles(profiles)
 
     def _set_status(self, text: str) -> None:
@@ -520,6 +527,7 @@ class MainWindow(QWidget):
     def closeEvent(self, event) -> None:
         self._clock.stop()
         self.accounts.close_workers()
+        self.statistics.close_worker()
         if self._tray_controller is not None:
             self._tray_controller.close()
         super().closeEvent(event)

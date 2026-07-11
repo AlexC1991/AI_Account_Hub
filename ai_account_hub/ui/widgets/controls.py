@@ -8,7 +8,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
-from ai_account_hub.ui.tokens import accent_gradient, rgba
+from ai_account_hub.ui.tokens import rgba
 
 
 class ToggleSwitch(QWidget):
@@ -91,7 +91,6 @@ class SegmentedControl(QWidget):
 
     def _restyle(self) -> None:
         t = self._tokens
-        grad = accent_gradient(t)
         self.setStyleSheet(
             f"QWidget{{background:{t['panel2']};border:1px solid {t['border']};border-radius:8px;}}"
         )
@@ -99,7 +98,7 @@ class SegmentedControl(QWidget):
             active = val == self._value
             if active:
                 btn.setStyleSheet(
-                    f"QPushButton{{background:{grad};color:{t['accentText']};border:none;"
+                    f"QPushButton{{background:{t['accent']};color:{t['accentText']};border:none;"
                     f"border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;}}"
                 )
             else:
@@ -181,7 +180,7 @@ class Spinner(QWidget):
 
 
 class SegmentedSlider(QWidget):
-    """A flush segmented control (the header Coding|Accounts switch). The accent
+    """A flush segmented control for switching top-level Hub screens. The accent
     thumb is drawn in paintEvent from the *current* width every frame, so it is
     correct on the very first paint — there is no child-widget geometry to get
     mis-timed on startup. Switching animates the thumb's position smoothly."""

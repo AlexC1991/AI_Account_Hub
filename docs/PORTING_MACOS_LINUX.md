@@ -7,10 +7,10 @@ application. Its runtime path is:
 main.py -> ai_account_hub.app.main() -> QApplication -> MainWindow
 ```
 
-The supported UI is the Accounts dashboard. The old Coding workbench and
-native harness modules are not part of the public package. Provider commands,
-account refreshes, desktop switching, the system-tray widget, and Signal Rail
-notifications are owned by the modules under `ai_account_hub/`.
+The supported UI contains the Statistics workspace and Accounts
+dashboard. Provider commands, account refreshes, desktop switching, local
+model-metadata scanning, the system-tray widget, and Signal Rail notifications
+are owned by the modules under `ai_account_hub/`.
 
 This document is the implementation contract for a real macOS or Linux port.
 The repository does not yet contain a signed `.app`, AppImage, or distro
@@ -40,8 +40,14 @@ ai_account_hub/engine.py        provider discovery, refresh, launch and actions
 ai_account_hub/engine_claude_desktop.py
                                 Claude Desktop capture/switch flow
 ai_account_hub/core/            state, history, browser and discovery logic
+ai_account_hub/core/model_analytics.py
+                                privacy-safe Codex/Claude session aggregation
+ai_account_hub/core/benchmark_analytics.py
+                                passive task cache, limit burn, density formulas
 ai_account_hub/ui/main_window.py
                                 standalone window and lifecycle
+ai_account_hub/ui/screens/statistics_screen.py
+                                personal model analytics screen and charts
 ai_account_hub/ui/tray_widget.py
                                 QSystemTrayIcon and Best Next popup
 ai_account_hub/ui/signal_rail.py
@@ -62,8 +68,13 @@ Linux application must not open a terminal or depend on that batch file.
 
 ## Already portable
 
-- The main UI, themes, account cards, calendar, SQLite history, workers, and
-  Signal Rail renderer use PySide6/Python APIs.
+- The main UI, themes, custom-painted Statistics charts, account cards, calendar, SQLite
+  history, workers, and Signal Rail renderer use PySide6/Python APIs.
+- Statistics launches `ai_account_hub.core.analytics_worker_process` with the
+  active Python interpreter. Windows applies `BELOW_NORMAL_PRIORITY_CLASS`;
+  macOS/Linux use `os.nice(5)`. Packages must include that module and preserve
+  `python -m ai_account_hub.core.analytics_worker_process` support, or set
+  `AI_HUB_ANALYTICS_IN_PROCESS=1` as a slower compatibility fallback.
 - `provider_discovery.py` already has Windows, macOS, and Linux candidate sets.
 - `Path.home()` and `AI_HUB_LAUNCHER_ROOT` make the runtime root configurable.
 - Windows subprocess flags use `getattr(..., 0)` and become no-ops on POSIX.
@@ -82,6 +93,7 @@ between Cocoa, X11, and Wayland.
 | Open files/folders | `ui/main_window.py`, `engine.py`, `engine_claude_desktop.py` | `os.startfile` | Route through `QDesktopServices.openUrl(QUrl.fromLocalFile(...))`. |
 | Desktop launch/stop | `engine.py`, `engine_claude_desktop.py` | PowerShell, AppX, Explorer and Windows process inspection | Add provider-specific Cocoa/Linux implementations behind one adapter. |
 | Provider fallback locators | `core/locators.py`, `core/hub_core.py` | AppX, Registry/WindowsApps and `.exe` paths | Keep shared discovery first; replace compatibility fallbacks per OS. |
+| Store Codex CLI staging | `core/provider_discovery.py` | Copies only the installed Store package's CLI into machine-local Hub runtime because `WindowsApps` denies direct execution | Do not carry this workaround to POSIX when `codex` is executable in place. Use the normal PATH/bundle target and preserve executable permissions. |
 | Terminal launch | `engine.py` | PowerShell with a visible console | macOS Terminal/iTerm or a configured terminal; Linux terminal argv without shell interpolation. |
 | Window integration | `core/palette.py`, `app.py`, `main.py` | DWM title-bar calls, AppUserModelID and Win32 crash dialog | Make these explicit no-ops on POSIX and provide native bundle metadata. |
 | Browser profiles | `core/browser.py` | Chrome-family Windows paths and Win32 shared reads | Add native executable paths; keep isolated `--user-data-dir` profiles. |
@@ -130,6 +142,11 @@ Prefer `QStandardPaths` in the adapter, while preserving
 | Cache/icons | same runtime root | `~/Library/Caches/AI Account Hub` | `${XDG_CACHE_HOME:-~/.cache}/ai-account-hub` |
 | Claude Desktop | `%APPDATA%/Claude` | `~/Library/Application Support/Claude` | `${XDG_CONFIG_HOME:-~/.config}/Claude` |
 | Cursor state | `%APPDATA%/Cursor` | `~/Library/Application Support/Cursor` | `${XDG_CONFIG_HOME:-~/.config}/Cursor` |
+
+`benchmark_analytics.py` currently keeps its numeric source/task cache in the
+same SQLite file as usage history. A port may move that cache, but must keep the
+privacy contract: no prompt/response text, source, diff, command, tool output,
+path, account name, or email may be persisted or exported.
 
 Do not silently move existing user data. If the port changes a default path,
 implement an explicit one-time migration with a backup and a diagnostic log.
@@ -272,7 +289,9 @@ the same event through both paths.
 
 - **Codex**: find `codex` on `PATH`, `~/.local/bin`, Homebrew prefixes, and the
   macOS `Codex.app` bundle when installed. Preserve `CODEX_HOME`. Linux desktop
-  support must not be claimed unless a real desktop target is discovered.
+  support must not be claimed unless a real desktop target is discovered. The
+  Windows Store staging copy is an ACL workaround only; macOS/Linux ports should
+  neither copy provider binaries nor assume a `provider-tools/codex` cache.
 - **Claude Code**: find `claude` independently from Claude Desktop. Preserve
   `CLAUDE_CONFIG_DIR`; implement Desktop capture only after the target OS state
   paths and process lifecycle are verified.

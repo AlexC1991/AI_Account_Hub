@@ -7,9 +7,28 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import datetime as dt
 
 from ai_account_hub.core import hub_core
 from ai_account_hub.core.hub_core import *  # noqa: F401,F403
+
+_RETENTION_DAYS = 400
+_last_retention_day = ""
+
+
+def _prune_history_retention(connection: sqlite3.Connection) -> None:
+    """Bound numeric history growth while preserving the 365-day UI range."""
+    global _last_retention_day
+    today = dt.datetime.now(dt.timezone.utc).date()
+    if _last_retention_day == today.isoformat():
+        return
+    cutoff_day = (today - dt.timedelta(days=_RETENTION_DAYS)).isoformat()
+    connection.execute("delete from usage_history where bucket_day < ?", (cutoff_day,))
+    connection.execute(
+        "delete from limit_history where refreshed_at_utc < ?",
+        (f"{cutoff_day}T00:00:00+00:00",),
+    )
+    _last_retention_day = today.isoformat()
 
 def init_history_db() -> None:
     hub_core.LAUNCHER_ROOT.mkdir(parents=True, exist_ok=True)
@@ -59,6 +78,7 @@ def init_history_db() -> None:
             create index if not exists idx_limit_history_profile on limit_history(profile_id);
             """
         )
+        _prune_history_retention(connection)
         connection.commit()
     finally:
         connection.close()
@@ -90,13 +110,30 @@ def record_profile_history(profile: dict, refresh_reason: str = "refresh") -> No
     name = str(profile.get("name") or "Account")
     connection = sqlite3.connect(hub_core.HISTORY_DB_FILE)
     try:
-        for bucket in profile.get("usageDailyBuckets") or []:
+        usage_buckets = [
+            bucket for bucket in (profile.get("usageDailyBuckets") or [])
+            if isinstance(bucket, dict)
+        ]
+        if provider == "claude" and any(
+            history_bucket_source(profile, bucket) == "claude-code-jsonl-v2"
+            for bucket in usage_buckets
+        ):
+            # v2 is a complete, globally deduplicated rebuild. Remove the full
+            # legacy source first so days that disappeared after deduplication
+            # cannot survive beside the corrected series.
+            connection.execute(
+                "delete from usage_history where profile_id = ? "
+                "and source like 'claude-code-jsonl%'",
+                (pid,),
+            )
+        for bucket in usage_buckets:
             if not isinstance(bucket, dict):
                 continue
             day = day_from_bucket(bucket)
             if not day:
                 continue
             bucket_json = json.dumps(bucket, sort_keys=True, default=str)
+            source = history_bucket_source(profile, bucket)
             connection.execute(
                 """
                 insert into usage_history (
@@ -120,7 +157,7 @@ def record_profile_history(profile: dict, refresh_reason: str = "refresh") -> No
                     tokens_from_bucket(bucket),
                     minutes_from_bucket(bucket),
                     history_message_count(bucket),
-                    history_bucket_source(profile, bucket),
+                    source,
                     history_bucket_hash(bucket),
                     bucket_json,
                     now,
@@ -229,3 +266,56 @@ def history_limit_count() -> int:
         connection.close()
 
 
+def history_limit_entries(
+    profiles: list[dict],
+    since_utc: str | None = None,
+) -> list[dict]:
+    """Return normalized limit snapshots for benchmark interval analysis.
+
+    The rows contain only provider percentages, reset timestamps, and state.
+    Account credentials and provider payloads never enter this table.
+    """
+    init_history_db()
+    allowed = {profile_id(profile) for profile in profiles}
+    if not allowed:
+        return []
+    query = (
+        "select profile_id, provider, refreshed_at_utc, refresh_reason, state, "
+        "short_used_percent, short_left_percent, short_reset_utc, "
+        "weekly_used_percent, weekly_left_percent, weekly_reset_utc, "
+        "weekly_estimate_utc, reset_credits_available, limit_reached_type "
+        "from limit_history"
+    )
+    params: list[object] = []
+    if since_utc:
+        query += " where refreshed_at_utc >= ?"
+        params.append(str(since_utc))
+    query += " order by profile_id, refreshed_at_utc, id"
+    connection = sqlite3.connect(hub_core.HISTORY_DB_FILE)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(query, params).fetchall()
+    finally:
+        connection.close()
+    output: list[dict] = []
+    for row in rows:
+        pid = str(row["profile_id"] or "")
+        if pid not in allowed:
+            continue
+        output.append({
+            "profileId": pid,
+            "provider": str(row["provider"] or ""),
+            "refreshedAtUtc": str(row["refreshed_at_utc"] or ""),
+            "refreshReason": str(row["refresh_reason"] or ""),
+            "state": str(row["state"] or ""),
+            "shortUsedPercent": row["short_used_percent"],
+            "shortLeftPercent": row["short_left_percent"],
+            "shortResetUtc": str(row["short_reset_utc"] or ""),
+            "weeklyUsedPercent": row["weekly_used_percent"],
+            "weeklyLeftPercent": row["weekly_left_percent"],
+            "weeklyResetUtc": str(row["weekly_reset_utc"] or ""),
+            "weeklyEstimateUtc": str(row["weekly_estimate_utc"] or ""),
+            "resetCreditsAvailable": str(row["reset_credits_available"] or ""),
+            "limitReachedType": str(row["limit_reached_type"] or ""),
+        })
+    return output

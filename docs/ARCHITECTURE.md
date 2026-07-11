@@ -25,7 +25,8 @@ Start-AI-Account-Hub.bat (Windows source bootstrap)
 
 `main.py` installs the top-level exception logger. `app.py` owns Qt application
 creation and platform application identity. `MainWindow` owns the visible
-window, account screen, timers, tray controller, and orderly shutdown.
+window, Statistics and Accounts screens, timers, tray controller, and
+orderly shutdown.
 
 ## Package layout
 
@@ -42,16 +43,22 @@ ai_account_hub/
     theme.py, tokens.py          QSS theme manager and design tokens
     account_notifications.py     transition rules and notification settings
     signal_rail.py               custom themed notification overlays
+    storage_dialog.py            local-data ownership and safe cleanup UI
     tray_widget.py               system tray and Best Next popup
     calendar_widget.py           month/week usage and reset calendar
     modals.py                    account/day dialogs
     widgets/                     chrome, controls and indicators
     screens/accounts_screen/     account cards, workers, actions and stats
+    screens/statistics_screen.py Statistics navigation, filters and tables
+    screens/statistics_charts.py custom charts, hover cards and scan worker
 
   core/
     __init__.py                  public backend facade
     hub_core.py                  shared state, limits and profile helpers
     history_db.py                SQLite usage/limit history
+    model_analytics.py           Codex/Claude numeric session aggregation
+    benchmark_analytics.py       passive resource/work importer and formulas
+    storage.py                   size reporting and bounded managed cleanup
     provider_discovery.py        deterministic provider scanner
     browser.py                   isolated browser profiles
     claude_status.py             Claude state readers
@@ -63,19 +70,30 @@ scripts/
                                   Codex app-server rate-limit/usage probe
 ```
 
-The public package contains the Accounts product. The earlier Coding workbench
-and native harness are not shipped in this release.
+The public package contains the Statistics workspace and Accounts
+dashboard. Provider apps and CLIs continue to own prompts and execution.
 
 ## Data flow
 
-1. `MainWindow` creates `AccountsScreen`, `TrayController`, and
-   `AccountNotificationMonitor`.
+1. `MainWindow` creates `StatisticsScreen`, `AccountsScreen`, `TrayController`,
+   and `AccountNotificationMonitor`.
 2. Account workers call the blocking `data.refresh_one()` API off the UI thread.
 3. `data.py` delegates to `HubEngine`, which uses the provider's official CLI,
    desktop state, or documented local files.
 4. `hub_core` normalizes limits/state and records history in SQLite.
-5. The screen refreshes cards, calendar, stats, detail rail, tray widget, and
-   notification monitor from the same profile dictionaries.
+5. The Accounts screen refreshes cards, calendar, stats, detail rail, tray
+   widget, and notification monitor from the same profile dictionaries.
+6. `StatisticsScreen` debounces profile-update bursts and launches its numeric
+   Codex/Claude scan in a below-normal-priority helper process. The Qt worker
+   waits for the privacy-safe JSON result, keeping Python parser CPU and the GIL
+   out of the GUI process. Frozen builds retain an in-process compatibility
+   fallback until their packager supplies the helper entry point.
+   `benchmark_analytics` caches one aggregate per provider task, derives limit
+   burn only from adjacent snapshots less than 20 minutes apart, and builds
+   effort-level numeric groups. The UI then derives base-model navigation while
+   retaining the original effort groups for reasoning filters, chart series,
+   attribution, Compare baselines/full-value bars/deltas, and export. Prompt text, response text, reasoning content,
+   source, diffs, commands, file paths, and tool output are not retained.
 
 No worker should modify Qt widgets. Results return through Qt signals and the UI
 thread performs rendering.
@@ -101,7 +119,27 @@ change functions that close over `hub_core` globals.
   Python also rejects impossible rollovers before a previously advertised reset.
 - **Claude Code**: each profile has an isolated config directory. Claude Desktop
   capture/switch logic is separate because CLI and Desktop authentication are
-  independent provider sessions.
+  independent provider sessions. Local usage keeps one maximum non-zero usage
+  record per global assistant-message ID because Claude may copy the same
+  message into several JSONL transcripts.
+- **Statistics attribution**: Codex Desktop's default home supplies the
+  shared model and reasoning-effort timeline. The selected account's app-server
+  remains authoritative for that login's daily total. The Hub applies the
+  same-day shared model/effort mix to each account total, or the latest shared
+  setting when that day has no turn metadata, and labels those tokens as
+  inferred. Exact per-profile turns remain observed. Unknown input/cache/output
+  composition stays unclassified, and every account/day total is preserved.
+- **Observable work**: Codex task lifecycle, patch, command, test, rollback and
+  compaction events and Claude task/tool events are reduced to numeric counters.
+  Duplicate transcript copies merge by stable task identity using the most
+  complete observation, never by summing copies. Files are represented only by
+  SHA-256 hashes so unique-file counts can be computed without storing paths.
+- **Productivity Density**: the UI presents tokens, active time, limit burn,
+  tasks, edits, files, lines, tests and commands as a bundle. There is no
+  composite score, quality claim, survey, prompt classification, or synthetic
+  benchmark. Account IDs are filters. The model picker and comparison table
+  aggregate by provider and base model; graphics, reasoning filters, and CSV
+  exports retain provider, model, and reasoning effort.
 - **Cursor**: Desktop, shell launcher, and Cursor Agent are distinct discovered
   capabilities. Missing quota fields stay `not exposed`.
 - **Antigravity**: Desktop and a healthy standalone `agy` are separate
@@ -109,6 +147,11 @@ change functions that close over `hub_core` globals.
 
 Provider discovery proves that software exists and can often answer
 `--version`. It does not prove that an account is logged in.
+
+For Store Codex builds on Windows, discovery may stage only the package's
+official CLI executable under the Hub runtime root because direct execution
+from `WindowsApps` can be denied. The staged file is refreshed atomically from
+the installed package and contains no account state.
 
 ## Tray lifecycle
 
@@ -139,7 +182,8 @@ cannot be shown.
 
 Runtime data lives under `AI_HUB_LAUNCHER_ROOT` or the platform default, never
 inside the source/package directory. It includes profiles, settings, SQLite
-history, browser profiles, logs, generated icons, and desktop-switch state.
+history, browser profiles, logs, generated icons, desktop-switch state, and the
+optional Windows Store Codex CLI staging copy.
 
 The discovery report contains installation paths and versions only. It must not
 contain provider tokens, cookies, auth files, or a full environment dump.

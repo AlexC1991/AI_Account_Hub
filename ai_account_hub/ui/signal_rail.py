@@ -284,6 +284,11 @@ class SignalRailToast(QWidget):
         self._resume_timer()
 
     def _finish_show(self) -> None:
+        # Pin the terminal values instead of relying on the platform animation
+        # driver to report an exact final opacity after a busy notification
+        # burst. This also keeps theme/shadow updates from exposing a partially
+        # faded toast if the final animation frame was delayed.
+        self.setWindowOpacity(1.0)
         self._shadow.setEnabled(True)
         self.card.update()
         self.update()

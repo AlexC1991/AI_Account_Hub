@@ -40,6 +40,39 @@ emails, limits, or tokens are shown.
 The main dashboard shows provider profiles, ready/not-ready state, weekly usage
 left, session usage left, calendar reset markers, and the selected account rail.
 
+The **Statistics** tab opens the personal usage workspace. It passively
+reads numeric Codex and Claude Code activity and compares the resources consumed
+with observable engineering activity: tasks, edits, files, lines, tests,
+commands, tool calls, active time, and measured limit burn. Its Productivity
+Density panel keeps those facts separate instead of reducing them to one score.
+The numbered rail separates Overview, Models, Productivity, and Compare without
+opening new windows. Each section owns its line-chart and vertical-bar modes. The Models
+section lists one entry per base model, then exposes reasoning settings as chart
+series, a filter, and a sort option instead of duplicating the model picker for
+High, XHigh, Ultra, or other efforts. The lower panel switches between base-model
+comparison and a numeric activity journal. Account selection filters source
+records without putting account names into chart legends or exports.
+
+Compare supports a two-to-four-model roster. Each row can use a consolidated
+base model or one observed reasoning setting. The first row is the baseline;
+the workspace overlays every selected time series, uses full-height bars from
+zero with signed baseline annotations,
+and lists absolute values plus `+`/`-` differences for resources, work activity,
+active time, and measured limit burn. These are factual differences, not quality
+scores.
+
+This is not a synthetic model benchmark and does not judge answer quality. It
+does not ask for ratings, classify prompt text, or run test prompts. Codex
+Desktop uses one shared conversation/model timeline while the Hub swaps account
+authentication, so model names and effort settings are shared across Codex
+profiles while each account's provider usage total stays separate. Repeated
+Claude transcript copies are deduplicated by message identity. Prompt text,
+responses, source, diffs, commands, tool output, file paths, and account names
+are not stored in the benchmark cache.
+
+See [Real-World Usage Analytics](docs/REAL_WORLD_USAGE_ANALYTICS.md) for the
+metrics, attribution rules, limit-burn safeguards, and privacy boundary.
+
 ### Calendar And Daily Usage
 
 | Usage calendar | Selected day detail |
@@ -55,11 +88,18 @@ left, session usage left, calendar reset markers, and the selected account rail.
 | The right rail keeps account actions, auth tools, usage stats, and activity logs together for the selected profile. | Built-in themes let the app switch visual style without changing account data or provider state. |
 
 More images live in [`screenshots/`](screenshots/). Use **Help → View demo
-(sample data)** before capturing new screenshots for GitHub.
+(sample data)** to open the Statistics workspace with private, synthetic model,
+work, token, and limit data; Accounts remains available from the top switch.
 
 ## Features
 
 - Account dashboard with ready, login-needed, error, and not-ready states.
+- Statistics workspace with independent Overview, Models, Productivity, and
+  Compare sections; line and vertical-bar views; base-model and reasoning
+  filters; chart focus/zoom; and privacy-safe PNG/CSV export.
+- Passive Productivity Density facts for tokens, task completions, edits,
+  files, lines, tests, commands, active time, and trustworthy 5h/weekly limit
+  movement. It is deliberately not a quality score.
 - Calendar view for usage history and weekly reset markers when providers expose enough data.
 - Combined visible-account stats for weekly and session capacity.
 - OpenAI/Codex reset-credit visibility and reset action when the provider
@@ -74,8 +114,10 @@ More images live in [`screenshots/`](screenshots/). Use **Help → View demo
 
 ## Release Status
 
-The Accounts dashboard is the supported public surface for this release. The
-earlier Coding workbench is not included in the current public application.
+The Statistics workspace and Accounts dashboard are the supported
+public surfaces for this release. Cursor and Antigravity remain visible in
+account coverage, but model/token analytics show **Not exposed** until those
+providers publish dependable local telemetry.
 
 ## Run
 
@@ -136,10 +178,11 @@ data; it does not maintain a separate installation-discovery cache.
 Discovery precedence is deterministic:
 
 1. A valid `AI_HUB_*_PATH` environment override
-2. The current process `PATH`
-3. Per-user native installer locations
-4. WinGet, Microsoft Store/AppX, conventional Program Files, and provider bundle locations
-5. A compatibility probe if the shared scanner itself fails
+2. On Windows, an executable CLI staged from the installed Store Codex package
+3. The current process `PATH`
+4. Per-user native installer locations
+5. WinGet, Microsoft Store/AppX, conventional Program Files, and provider bundle locations
+6. A compatibility probe if the shared scanner itself fails
 
 An invalid override produces a warning in the discovery report but does not block fallback discovery. Missing providers are represented as missing capabilities; they are never treated as a fatal launcher error.
 
@@ -147,7 +190,7 @@ The Windows scan covers these supported surfaces:
 
 | Provider | Desktop | CLI / agent |
 |---|---|---|
-| Codex | Microsoft Store/AppX package | `codex` on `PATH`, the Codex app bundle, WinGet/user bins, npm-style user bins |
+| Codex | Microsoft Store/AppX package | Store CLI staged under Hub runtime, `codex` on `PATH`, WinGet/user bins, npm-style user bins |
 | Claude | Claude Desktop AppX or conventional install | `claude` on `PATH`, native `~/.local/bin`, WinGet, npm, or Claude Desktop's bundled Claude Code |
 | Cursor | `Cursor.exe`, App Paths registry, Program Files, or per-user install | `cursor` plus the separate `cursor-agent`/`agent` installation |
 | Antigravity | Antigravity 2.0 per-user or Program Files install | Official `agy` user install, `PATH`, or configured override |
@@ -157,6 +200,13 @@ The machine-local result is written atomically to:
 ```text
 %USERPROFILE%\.codex-account-launcher\provider-discovery.json
 ```
+
+Current Store Codex builds can expose a physical `WindowsApps` path that cannot
+be launched directly by another process. In that case the scanner copies only
+the installed package's signed `codex.exe` to
+`%USERPROFILE%\.codex-account-launcher\provider-tools\codex\codex.exe`. It is
+checked on every launch and replaced only when the installed package changes.
+No login, configuration, conversation, or account data is copied with it.
 
 The report contains installation paths, discovery sources, versions, and warnings. It does not read or serialize provider credentials, cookies, refresh tokens, or API keys. To regenerate it manually, run:
 
@@ -200,6 +250,12 @@ The app stores local launcher data outside the repository, mainly under:
 - `%USERPROFILE%\.ai-account-hub`
 
 Provider auth files, browser cookie profiles, local QA captures, lock files, and generated icon caches are intentionally ignored by Git.
+
+Use **File → Local data...** to see the size of Hub-managed data separately
+from official Codex and Claude files. The safe cleanup keeps 400 days of numeric
+analytics and removes only old Hub database rows and disposable caches inside
+isolated browser profiles. It does not remove accounts, cookies, saved logins,
+desktop states, or official provider history.
 
 Provider icon files are discovered at runtime. You can override them with:
 

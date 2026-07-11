@@ -30,7 +30,7 @@ _PROVIDERS = [
 
 # Used For Testing Claude Account Switching
 # The backend still understands this profile type, but it is deliberately not
-# offered by Add Profile because it has no Claude Code/Coding capability.
+# offered by Add Profile because it has no Claude Code CLI capability.
 _CLAUDE_DESKTOP_TEST_PROFILE = ("Claude Desktop (free)", "claude", "desktop")
 
 
@@ -128,7 +128,7 @@ class AddProfileDialog(QDialog):
         elif self._provider_key() == "claude":
             self.provider_note.setText(
                 "Free Desktop-only account: supports Desktop switching, but not "
-                "Claude Code, Coding, limits, Status, or Doctor."
+                "Claude Code CLI, limits, Status, or Doctor."
             )
         else:
             self.provider_note.setText(

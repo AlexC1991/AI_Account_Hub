@@ -19,9 +19,18 @@ _logger = logging.getLogger(__name__)
 
 
 def locate_codex_cli() -> str:
-    env_path = os.environ.get("CODEX_CLI_PATH")
+    env_path = os.environ.get("AI_HUB_CODEX_CLI_PATH") or os.environ.get("CODEX_CLI_PATH")
     if env_path and Path(env_path).exists():
         return str(Path(env_path).resolve())
+
+    # The startup discovery pass stages Store builds outside protected
+    # WindowsApps. Check that machine-local copy before legacy install folders.
+    staged = (
+        Path(os.environ.get("AI_HUB_LAUNCHER_ROOT", str(Path.home() / ".codex-account-launcher")))
+        / "provider-tools" / "codex" / "codex.exe"
+    ).expanduser()
+    if staged.is_file():
+        return str(staged.resolve())
 
     local_bin = Path(os.environ.get("LOCALAPPDATA", "")) / "OpenAI" / "Codex" / "bin"
     if local_bin.exists():
