@@ -70,5 +70,37 @@ def _run() -> int:
         _exception_hook(exc_type, value, tb)
         return 1
 
+
+def _smoke_test() -> int:
+    """Validate imports and frozen resources without opening the GUI."""
+
+    try:
+        import ai_account_hub
+        from ai_account_hub import data
+        from ai_account_hub.core import hub_core
+        from ai_account_hub.ui import main_window
+
+        app_root = Path(main_window.__file__).resolve().parents[2]
+        required = (
+            data.ASSETS_DIR / "hub-icon.png",
+            data.ASSETS_DIR / "codex-icon.png",
+            data.ASSETS_DIR / "claude-icon.png",
+            hub_core.HELPER_PATH,
+            app_root / "README.md",
+            app_root / "RELEASE_NOTES.md",
+            app_root / "docs" / "ARCHITECTURE.md",
+        )
+        missing = [str(path) for path in required if not path.is_file()]
+        if missing:
+            raise RuntimeError("Missing packaged resources: " + ", ".join(missing))
+        expected_version = os.environ.get("AI_HUB_EXPECTED_VERSION", "").strip()
+        if expected_version and ai_account_hub.__version__ != expected_version:
+            raise RuntimeError(f"Unexpected package version: {ai_account_hub.__version__}")
+        return 0
+    except Exception:
+        if sys.stderr is not None:
+            traceback.print_exc()
+        return 2
+
 if __name__ == "__main__":
-    raise SystemExit(_run())
+    raise SystemExit(_smoke_test() if "--smoke-test" in sys.argv else _run())

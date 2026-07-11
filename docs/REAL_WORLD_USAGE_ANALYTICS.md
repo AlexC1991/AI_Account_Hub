@@ -45,7 +45,11 @@ base-model table and numeric activity journal.
 The Compare section has its own controls and does not reuse the Models filter.
 It accepts two to four base-model/reasoning selections, uses the first as a
 baseline, overlays the selected time series on a shared date scale, and shows a
-full-value vertical comparison chart plus an absolute-and-delta table. Every
+full-value vertical comparison chart plus an absolute-and-delta table.
+**Compare reasoning** temporarily replaces the roster with up to four observed
+reasoning settings from the baseline model. The UI reports the visible variant
+count, and **Restore comparison** returns to the previous mixed-model roster.
+Every
 bar starts at zero. The baseline remains a full vertical bar and also draws a
 horizontal reference line across the plot. Comparison labels and table rows
 keep the observed value separate from the signed difference.

@@ -214,8 +214,10 @@ The build must not contain:
 - `.claude/`, `.codex-accounts/`, Local Storage, IndexedDB, logs, tests, or demo
   captures containing personal data
 
-`HELPER_PATH` currently assumes a source checkout. Before packaging, route it
-through `PlatformAdapter.app_resource()` and verify that spaces and non-ASCII
+The Windows PyInstaller build mirrors the helper at its source-relative path,
+which keeps the current `HELPER_PATH` valid in that one-folder bundle. Native
+macOS and Linux packages should still route it through
+`PlatformAdapter.app_resource()` and verify that spaces and non-ASCII
 characters in the installed app path work. Node.js remains an external Codex
 quota-probe dependency unless a later release deliberately bundles a supported
 Node runtime.

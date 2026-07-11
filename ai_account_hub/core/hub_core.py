@@ -31,10 +31,12 @@ import webbrowser
 from pathlib import Path
 from urllib.parse import urlparse
 
-try:
+if sys.version_info >= (3, 11):
     import tomllib
-except ModuleNotFoundError:  # Python 3.10 uses the tomli backport.
-    import tomli as tomllib
+else:  # Keep the backport out of Python 3.12 frozen builds.
+    import importlib
+
+    tomllib = importlib.import_module("tomli")
 
 MODULE_DIR = Path(__file__).resolve().parent
 PACKAGE_DIR = MODULE_DIR.parent  # the ai_account_hub package root
@@ -396,6 +398,42 @@ def parse_iso_datetime(raw: object) -> dt.datetime | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=dt.timezone.utc)
     return value.astimezone(dt.timezone.utc)
+
+
+def limit_window_exhausted(profile: dict, used_key: str, reset_key: str) -> bool:
+    """Return true only while an exhausted provider window is still active."""
+
+    if not is_limit_exhausted(profile.get(used_key)):
+        return False
+    reset = parse_iso_datetime(profile.get(reset_key))
+    return reset is None or reset > dt.datetime.now(dt.timezone.utc)
+
+
+def codex_limit_blocked(profile: dict) -> bool:
+    """Interpret Codex's global reached flag against its two actual windows."""
+
+    short_blocked = limit_window_exhausted(
+        profile, "shortLimitUsedPercent", "shortLimitResetUtc"
+    )
+    weekly_blocked = limit_window_exhausted(
+        profile, "weeklyLimitUsedPercent", "weeklyLimitResetUtc"
+    )
+    if short_blocked or weekly_blocked:
+        return True
+
+    limit_type = str(profile.get("limitReachedType") or "").strip().lower()
+    now = dt.datetime.now(dt.timezone.utc)
+    short_reset = parse_iso_datetime(profile.get("shortLimitResetUtc"))
+    weekly_reset = parse_iso_datetime(
+        profile.get("weeklyResetEstimateUtc") or profile.get("weeklyLimitResetUtc")
+    )
+    if "week" in limit_type:
+        return weekly_reset is None or weekly_reset > now
+    if any(token in limit_type for token in ("primary", "session", "short", "5h")):
+        return short_reset is None or short_reset > now
+    # A generic rate_limit_reached flag is not enough to keep an account blocked
+    # after both measured windows say otherwise or their reset has elapsed.
+    return False
 
 
 def iso_utc_now() -> str:
@@ -875,11 +913,7 @@ def effective_state(profile: dict) -> str:
         return "login"
     if cooldown_remaining(profile).total_seconds() > 0:
         return "not_ready"
-    if str(profile.get("limitReachedType", "")).strip():
-        return "not_ready"
-    if is_limit_exhausted(profile.get("shortLimitUsedPercent")):
-        return "not_ready"
-    if is_limit_exhausted(profile.get("weeklyLimitUsedPercent")):
+    if codex_limit_blocked(profile):
         return "not_ready"
     return "ready"
 
@@ -897,9 +931,12 @@ def ready_countdown(profile: dict) -> str:
         text = format_countdown(raw)
         return "" if text in {"-", "now"} else text
 
-    weekly_blocked = is_limit_exhausted(profile.get("weeklyLimitUsedPercent")) or "week" in limit_type
+    weekly_blocked = (
+        limit_window_exhausted(profile, "weeklyLimitUsedPercent", "weeklyLimitResetUtc")
+        or "week" in limit_type
+    )
     session_blocked = (
-        is_limit_exhausted(profile.get("shortLimitUsedPercent"))
+        limit_window_exhausted(profile, "shortLimitUsedPercent", "shortLimitResetUtc")
         or "primary" in limit_type
         or "session" in limit_type
         or "short" in limit_type
@@ -914,10 +951,6 @@ def ready_countdown(profile: dict) -> str:
         if countdown:
             return countdown
 
-    for reset in (session_reset, weekly_reset):
-        countdown = usable_countdown(reset)
-        if countdown:
-            return countdown
     return ""
 
 
@@ -1255,8 +1288,8 @@ _CODEX_LIMIT_SNAPSHOT_FIELDS = (
 _CODEX_IMPOSSIBLE_ROLLOVER_DROP = 25.0
 
 
-def _codex_snapshot_guard_until(profile: dict, result: dict) -> dt.datetime | None:
-    """Return the known future reset that makes a new sample impossible.
+def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.datetime]:
+    """Return provider windows whose apparent early rollover is impossible.
 
     Codex app-server can briefly return a newly initialized 0%-used window while
     the real window is still active. Used percentage cannot fall sharply before
@@ -1267,20 +1300,20 @@ def _codex_snapshot_guard_until(profile: dict, result: dict) -> dt.datetime | No
         provider_key(profile) != "codex"
         or str(result.get("resetOutcome") or "") == "reset"
     ):
-        return None
+        return {}
     rate_limits = (
         result.get("rateLimits")
         if isinstance(result.get("rateLimits"), dict)
         else {}
     )
     if str(rate_limits.get("rateLimitReachedType") or "").strip():
-        return None
+        return {}
 
     now = dt.datetime.now(dt.timezone.utc)
-    impossible_until: list[dt.datetime] = []
-    for used_key, reset_key, incoming_key in (
-        ("shortLimitUsedPercent", "shortLimitResetUtc", "shortWindow"),
-        ("weeklyLimitUsedPercent", "weeklyLimitResetUtc", "weeklyWindow"),
+    guarded: dict[str, dt.datetime] = {}
+    for window_name, used_key, reset_key, incoming_key in (
+        ("short", "shortLimitUsedPercent", "shortLimitResetUtc", "shortWindow"),
+        ("weekly", "weeklyLimitUsedPercent", "weeklyLimitResetUtc", "weeklyWindow"),
     ):
         reset = parse_iso_datetime(profile.get(reset_key))
         if reset is None or reset <= now:
@@ -1299,8 +1332,8 @@ def _codex_snapshot_guard_until(profile: dict, result: dict) -> dt.datetime | No
             and previous_used - incoming_used >= _CODEX_IMPOSSIBLE_ROLLOVER_DROP
         )
         if exhausted_block_cleared or impossible_rollover:
-            impossible_until.append(reset)
-    return max(impossible_until) if impossible_until else None
+            guarded[window_name] = reset
+    return guarded
 
 
 def set_profile_limits_from_result(profile: dict, result: dict) -> None:
@@ -1319,7 +1352,7 @@ def set_profile_limits_from_result(profile: dict, result: dict) -> None:
         key: profile.get(key)
         for key in _CODEX_LIMIT_SNAPSHOT_FIELDS
     }
-    guard_until = _codex_snapshot_guard_until(profile, result)
+    guarded_windows = _codex_snapshot_guard_windows(profile, result)
     diagnostics = result.get("rateLimitDiagnostics")
     profile["rateLimitDiagnostics"] = (
         diagnostics if isinstance(diagnostics, dict) else {}
@@ -1366,20 +1399,49 @@ def set_profile_limits_from_result(profile: dict, result: dict) -> None:
     profile["weeklyResetEstimateUtc"] = estimate
     profile["weeklyResetEstimateSource"] = source
 
-    if guard_until is not None:
-        # Keep the old windows, reached flag, and reset estimate together. Mixing
-        # one old window with one placeholder window would create a state that
-        # Codex never reported and could still trigger a false reset notice.
-        for key, value in previous_limit_snapshot.items():
-            profile[key] = value
+    if guarded_windows:
+        guarded_fields = {
+            "short": (
+                "shortLimitLabel", "shortLimitUsedPercent", "shortLimitResetUtc",
+            ),
+            "weekly": (
+                "weeklyLimitLabel", "weeklyLimitUsedPercent", "weeklyLimitResetUtc",
+                "weeklyResetEstimateUtc", "weeklyResetEstimateSource",
+            ),
+        }
+        for window_name in guarded_windows:
+            for key in guarded_fields[window_name]:
+                profile[key] = previous_limit_snapshot[key]
+
+        previous_type = str(previous_limit_snapshot.get("limitReachedType") or "")
+        previous_type_lower = previous_type.lower()
+        preserve_reached = (
+            "short" in guarded_windows
+            and (
+                is_limit_exhausted(previous_limit_snapshot.get("shortLimitUsedPercent"))
+                or any(token in previous_type_lower for token in ("primary", "session", "short", "5h"))
+            )
+        ) or (
+            "weekly" in guarded_windows
+            and (
+                is_limit_exhausted(previous_limit_snapshot.get("weeklyLimitUsedPercent"))
+                or "week" in previous_type_lower
+            )
+        )
+        if preserve_reached:
+            profile["limitReachedType"] = previous_type
+
+        guard_until = max(guarded_windows.values())
+        window_text = " and ".join(sorted(guarded_windows))
         reason = (
-            "Ignored an early Codex rollover snapshot before "
+            f"Ignored an early Codex {window_text} rollover snapshot before "
             f"{guard_until.isoformat()}."
         )
         profile["lastRateLimitGuardUtc"] = iso_utc_now()
         profile["lastRateLimitGuardReason"] = reason
         result["rateLimitGuard"] = {
             "preservedPreviousSnapshot": True,
+            "preservedWindows": sorted(guarded_windows),
             "untilUtc": guard_until.isoformat(),
         }
     else:

@@ -1,304 +1,290 @@
 # AI Account Hub
 
-AI Account Hub is a Windows desktop GUI for managing multiple AI coding accounts and launching the official provider tools with the right profile selected. It is designed as a passthrough launcher and dashboard, not a replacement harness.
+AI Account Hub is a Windows desktop dashboard for people who use more than one
+AI coding account. It shows account readiness, session and weekly limits, reset
+timing, and local usage history, then launches the official provider tool with
+the selected profile active.
 
-The app keeps provider behavior owned by the official tools:
-
-- Codex uses the Codex desktop/app-server or CLI profile state.
-- Paid Claude accounts use Claude Code profiles. Use **Login** for the
-  account's Claude Code CLI profile, then **Desktop Login** only when you want
-  the same account captured for Claude Desktop switching.
-- Cursor uses Cursor Desktop and Cursor Agent when installed.
-- Antigravity uses the installed Antigravity desktop app and a healthy standalone `agy` CLI when exposed.
+The Hub is a passthrough launcher, not another coding harness. Codex, Claude
+Code, Cursor, and Antigravity continue to own their authentication, models,
+tools, context, updates, and safety prompts.
 
 ## Why Not A Proxy Or Pooler?
 
-AI Account Hub does **not** sit between your prompts and the providers. It does
-not create a shared API endpoint, proxy traffic, merge accounts into one fake
-quota, or replace the provider harnesses you already use.
+Proxy and pooling projects usually sit between the user and the provider. They
+may expose one shared endpoint, route prompts, merge quota, or become the runtime
+that executes requests.
 
-Instead, it manages isolated local profiles and launches the official apps or
-CLIs with the selected profile active. The goal is to make multi-account usage
-visible and less error-prone: see which accounts are ready, which are cooling
-down, when weekly/session limits appear to reset, and then open Codex, Claude
-Code, Cursor, or Antigravity directly with the right local state.
+AI Account Hub does none of that. It keeps local profiles isolated, reads the
+numeric status that official tools expose, and opens those tools with the chosen
+profile. Prompts and responses do not pass through the Hub.
 
-That difference matters because proxy/pooling tools usually become a new
-runtime surface. AI Account Hub is intentionally thinner: provider tools keep
-their own auth, execution, context, model behavior, updates, and safety prompts.
-The Hub is the account dashboard and launcher around them.
+This approach is deliberately narrower:
+
+- No shared API endpoint or merged artificial quota.
+- No replacement agent loop or model router.
+- No interception of prompts, responses, tool calls, or safety approvals.
+- Provider updates remain owned by the official applications and CLIs.
+- Accounts can still be used directly outside the Hub.
 
 ## Screenshots
 
-All screenshots below are captured in demo mode, so no real account names,
-emails, limits, or tokens are shown.
+Public captures contain no authentication details or real email addresses.
+Account views use the built-in sample-data mode; Statistics views expose only
+numeric model and activity totals.
 
-### Accounts Dashboard
+### Accounts
 
 ![AI Account Hub Accounts dashboard](screenshots/dashboard.png)
 
-The main dashboard shows provider profiles, ready/not-ready state, weekly usage
-left, session usage left, calendar reset markers, and the selected account rail.
+The Accounts workspace combines profile readiness, weekly and 5-hour capacity,
+reset markers, daily usage, and selected-account actions. Clicking a calendar
+day opens the records and resets observed for that date.
 
-The **Statistics** tab opens the personal usage workspace. It passively
-reads numeric Codex and Claude Code activity and compares the resources consumed
-with observable engineering activity: tasks, edits, files, lines, tests,
-commands, tool calls, active time, and measured limit burn. Its Productivity
-Density panel keeps those facts separate instead of reducing them to one score.
-The numbered rail separates Overview, Models, Productivity, and Compare without
-opening new windows. Each section owns its line-chart and vertical-bar modes. The Models
-section lists one entry per base model, then exposes reasoning settings as chart
-series, a filter, and a sort option instead of duplicating the model picker for
-High, XHigh, Ultra, or other efforts. The lower panel switches between base-model
-comparison and a numeric activity journal. Account selection filters source
-records without putting account names into chart legends or exports.
+![Calendar day detail with usage and reset events](screenshots/day-detail.png)
 
-Compare supports a two-to-four-model roster. Each row can use a consolidated
-base model or one observed reasoning setting. The first row is the baseline;
-the workspace overlays every selected time series, uses full-height bars from
-zero with signed baseline annotations,
-and lists absolute values plus `+`/`-` differences for resources, work activity,
-active time, and measured limit burn. These are factual differences, not quality
-scores.
+### Personal Usage Statistics
 
-This is not a synthetic model benchmark and does not judge answer quality. It
-does not ask for ratings, classify prompt text, or run test prompts. Codex
-Desktop uses one shared conversation/model timeline while the Hub swaps account
-authentication, so model names and effort settings are shared across Codex
-profiles while each account's provider usage total stays separate. Repeated
-Claude transcript copies are deduplicated by message identity. Prompt text,
-responses, source, diffs, commands, tool output, file paths, and account names
-are not stored in the benchmark cache.
-
-See [Real-World Usage Analytics](docs/REAL_WORLD_USAGE_ANALYTICS.md) for the
-metrics, attribution rules, limit-burn safeguards, and privacy boundary.
-
-### Calendar And Daily Usage
-
-| Usage calendar | Selected day detail |
+| Overview | Models |
 |---|---|
-| <img src="screenshots/calendar.png" alt="Monthly usage calendar with token totals and weekly reset markers"> | <img src="screenshots/day-detail.png" alt="Selected day details with per-account usage rows"> |
-| The calendar groups daily usage, token totals, and reset markers so you can see when accounts refresh. | Clicking a day opens a focused detail view with that day's records, tokens, active time, and reset events. |
+| <img src="screenshots/statistics-overview.png" alt="Statistics Overview with resource and completed-work charts"> | <img src="screenshots/statistics-models.png" alt="Models workspace with reasoning filters, token categories, and model table"> |
+| Account-wide model resources and completed work at a glance. | Base-model totals with observed reasoning settings kept available for filtering and comparison. |
 
-### Account Rail And Themes
-
-| Account detail rail | Theme picker |
+| Productivity | Compare |
 |---|---|
-| <img src="screenshots/account-detail.png" alt="Right-side account detail rail with session actions and usage stats"> | <img src="screenshots/themes.png" alt="Theme menu showing built-in color themes"> |
-| The right rail keeps account actions, auth tools, usage stats, and activity logs together for the selected profile. | Built-in themes let the app switch visual style without changing account data or provider state. |
+| <img src="screenshots/statistics-productivity.png" alt="Productivity workspace with limit burn and observed work history"> | <img src="screenshots/statistics-compare.png" alt="Head-to-head comparison of High and XHigh reasoning for the same model"> |
+| Tokens, tasks, edits, files, tests, commands, active time, and trustworthy limit movement remain separate facts. | Two to four model or reasoning selections share one date range, one baseline, zero-based bars, and signed differences. |
 
-More images live in [`screenshots/`](screenshots/). Use **Help → View demo
-(sample data)** to open the Statistics workspace with private, synthetic model,
-work, token, and limit data; Accounts remains available from the top switch.
+**Compare reasoning** temporarily fills the roster with the baseline model's
+observed reasoning settings. The workspace shows how many variants are visible
+and **Restore comparison** returns to the previous mixed-model roster.
+
+### Background Awareness
+
+| Best Next widget | Signal Rail warning |
+|---|---|
+| <img src="screenshots/tray-widget.png" alt="Compact Best Next account widget"> | <img src="screenshots/signal-rail.png" alt="Signal Rail warning for a nearly exhausted 5-hour limit"> |
+| Choose the strongest ready account without reopening the full dashboard. | Receive Hub-styled warnings for low or exhausted limits and notices when accounts become ready again. |
+
+Use **Help > View demo (sample data)** to explore both workspaces without reading
+your profiles or usage history.
 
 ## Features
 
-- Account dashboard with ready, login-needed, error, and not-ready states.
-- Statistics workspace with independent Overview, Models, Productivity, and
-  Compare sections; line and vertical-bar views; base-model and reasoning
-  filters; chart focus/zoom; and privacy-safe PNG/CSV export.
-- Passive Productivity Density facts for tokens, task completions, edits,
-  files, lines, tests, commands, active time, and trustworthy 5h/weekly limit
-  movement. It is deliberately not a quality score.
-- Calendar view for usage history and weekly reset markers when providers expose enough data.
-- Combined visible-account stats for weekly and session capacity.
-- OpenAI/Codex reset-credit visibility and reset action when the provider
-  exposes one for the selected account.
-- Per-provider account-setup guides in **Help → Account setup** (Claude Code, Codex, Cursor, Antigravity).
-- Account actions for desktop, CLI, login, status, doctor, online links, refresh, and local profile folders.
-- Claude Code profiles that keep CLI authentication and captured Desktop
-  sessions isolated per paid account.
-- Runtime icon discovery from installed provider apps, with optional environment overrides.
-- Compact Best Next system-tray widget with per-provider/account visibility controls.
-- Hub-styled Signal Rail warnings when the active account is nearly exhausted or reaches a limit, plus reset/ready notifications for every account.
+- Ready, not-ready, login-needed, error, and active account states.
+- Weekly and 5-hour capacity, countdowns, reset markers, and pooled visible-account totals.
+- Desktop, CLI, login, status, doctor, refresh, online, and local-profile actions where supported.
+- Codex reset-credit visibility and reset action when OpenAI exposes a credit.
+- Monthly calendar with per-day token totals, account activity, and weekly-reset events.
+- Statistics workspaces for Overview, Models, Productivity, and Compare.
+- Independent line-chart and vertical-bar modes with focus, tooltips, PNG export, and CSV export.
+- Same-model reasoning comparisons such as High versus XHigh, plus mixed-model comparisons.
+- Productivity Density facts without collapsing activity into a quality score.
+- Compact Best Next system-tray widget with provider and account visibility settings.
+- Signal Rail warnings for low limits, exhausted accounts, and confirmed resets.
+- Runtime discovery for provider applications, CLIs, agents, icons, and optional path overrides.
+- Built-in dark, light, and accent themes.
 
-## Release Status
-
-The Statistics workspace and Accounts dashboard are the supported
-public surfaces for this release. Cursor and Antigravity remain visible in
-account coverage, but model/token analytics show **Not exposed** until those
-providers publish dependable local telemetry.
-
-## Run
+## Quick Start
 
 Requirements:
 
-- Windows 10 or newer
-- Python 3.10 or newer
-- Python packages from `requirements.txt` (the launcher installs them when
-  needed)
-- Node.js when Codex account-limit probing is required
-- Any provider apps or CLIs you want to use; missing providers do not prevent startup
+- Windows 10 or newer.
+- Python 3.10 or newer.
+- Node.js when Codex account-limit probing is required.
+- At least one supported provider app or CLI. Missing providers do not block startup.
 
-Start the GUI:
+Download or clone the project, then run:
 
 ```bat
 Start-AI-Account-Hub.bat
 ```
 
-The batch file performs the first-run dependency and provider checks, then
-hands the GUI to `pythonw.exe` and exits; it does not keep a CMD window in the
-taskbar while the Hub is running. For troubleshooting, set
-`AI_HUB_CONSOLE=1` before launching to keep console output visible. Hidden-mode
-startup errors are recorded under
-`%USERPROFILE%\.codex-account-launcher\logs\ai-account-hub.log` (or the
-configured `AI_HUB_LAUNCHER_ROOT`).
+The launcher checks Python dependencies and installed providers on every start.
+It installs packages from `requirements.txt` when needed, starts the GUI through
+`pythonw.exe`, and exits so no CMD window remains in the taskbar.
 
-Or run it directly:
+For troubleshooting, launch with a visible console:
 
 ```bat
-py -3 main.py
+set AI_HUB_CONSOLE=1
+Start-AI-Account-Hub.bat
 ```
 
-(equivalent to `py -3 -m ai_account_hub`.)
+Hidden startup errors are written to:
 
-The app is the `ai_account_hub` package: the PySide6 (Qt) front-end is in
-`ai_account_hub\ui\`, and the shared, Tk-free backend is in `ai_account_hub\core\`
-(`hub_core.py`, `provider_discovery.py`). Provider refresh, desktop switching,
-and launch actions live in `engine.py` and `engine_claude_desktop.py`; the tray
-widget and custom Signal Rail notifications live under `ai_account_hub\ui\`.
+```text
+%USERPROFILE%\.codex-account-launcher\logs\ai-account-hub.log
+```
 
-## Platform support
+The direct Python entry point is:
 
-The app is **Windows-first** today. Provider discovery and most Qt UI code are
-already cross-platform, but desktop/process control, packaged-resource paths,
-some state readers, tray/notification placement, and the Windows-only browser
-cookie seeding still need target-OS adapters and native testing before macOS or
-Linux can be called supported. The current source-launch, standalone packaging,
-system-tray, Signal Rail, and acceptance-test plan is in
-[`docs/PORTING_MACOS_LINUX.md`](docs/PORTING_MACOS_LINUX.md).
+```bat
+py -3 -m ai_account_hub
+```
+
+### Portable Windows Executable
+
+GitHub Actions can build a self-contained Windows x64 folder containing
+`AI-Account-Hub.exe`; users do not need to install Python for that artifact.
+
+- Open **Actions > Build Windows executable > Run workflow** for a manual build.
+- Download `AI-Account-Hub-Windows-x64` from the completed workflow run.
+- Extract the ZIP and run `AI-Account-Hub.exe`.
+- Pushing a `v*` tag builds the same artifact and attaches it to a **draft**
+  GitHub Release for review before publication.
+
+The executable is not code-signed yet. Windows SmartScreen may show an
+unrecognized-app warning on first launch; compare the ZIP against the published
+`.sha256.txt` file before running it.
+
+The build remains one-folder rather than one-file so Qt plugins, provider icons,
+the Codex limit helper, Help documentation, and screenshots stay available
+without extracting the application into a temporary directory on every launch.
+
+## Account Setup
+
+The Hub starts empty on a clean machine. Add only the accounts you intend to
+manage. Provider-specific guides are available from **Help > Account setup** and
+in the documentation folder:
+
+- [Codex account setup](docs/CODEX_ACCOUNT_SETUP.md)
+- [Claude Code account setup](docs/CLAUDE_ACCOUNT_SETUP.md)
+- [Cursor account setup](docs/CURSOR_ACCOUNT_SETUP.md)
+- [Antigravity account setup](docs/ANTIGRAVITY_ACCOUNT_SETUP.md)
+
+Paid Claude accounts use two official login surfaces when Desktop switching is
+required: **Login** authenticates the isolated Claude Code CLI profile, and
+**Desktop Login** captures the matching Claude Desktop session. Switching later
+restores that captured official state. Logging out inside Claude Desktop can
+revoke the session and require Desktop Login again.
+
+## Statistics: What The Data Means
+
+Statistics passively reads numeric metadata exposed by local Codex and Claude
+Code history. It can show model and reasoning usage, token categories, completed
+tasks, edits, files, tests, commands, active time, and measured movement through
+5-hour and weekly limits.
+
+It is a personal real-world usage record, not a synthetic benchmark:
+
+- It does not run test prompts or ask for ratings.
+- It does not score answer quality.
+- Positive or negative comparison values describe resource or activity movement only.
+- Every comparison bar starts at zero and represents the observed absolute value.
+- Signed labels and table rows show the difference from the selected baseline.
+- Models and reasoning settings appear only after they have been observed.
+
+Codex uses one shared local conversation/model timeline while the Hub changes
+account authentication. Model names and reasoning settings can therefore be
+shared across Codex profiles even when provider quota remains account-specific.
+The UI labels inferred attribution rather than presenting it as exact.
+
+See [Real-World Usage Analytics](docs/REAL_WORLD_USAGE_ANALYTICS.md) for metric
+definitions, attribution rules, limit-burn safeguards, and the privacy boundary.
+
+## Provider Support
+
+| Provider | Desktop | CLI / agent | Local model analytics |
+|---|---|---|---|
+| Codex | Microsoft Store/AppX package | Store CLI staged under Hub runtime, `codex` on `PATH`, WinGet and user bins | Supported where local history exposes it |
+| Claude | Claude Desktop AppX or conventional install | `claude` on `PATH`, native installer, WinGet, npm, or bundled Claude Code | Supported for paid Claude Code history |
+| Cursor | Per-user, Program Files, or App Paths installation | `cursor` and the separate `cursor-agent`/`agent` installation | Not exposed reliably |
+| Antigravity | Antigravity 2.0 installation | Official standalone `agy` installation | Not exposed reliably |
+
+Some providers do not expose every quota or model field locally. The Hub shows
+**Not exposed** instead of inventing a percentage or model attribution.
+
+Official setup sources:
+
+- [Codex documentation](https://learn.chatgpt.com/docs)
+- [Claude Code setup](https://code.claude.com/docs/en/getting-started)
+- [Cursor documentation](https://cursor.com/docs)
+- [Antigravity CLI installation](https://antigravity.google/docs/cli-install)
+- [Antigravity downloads](https://antigravity.google/download)
 
 ## Provider Discovery
 
-`Start-AI-Account-Hub.bat` runs a clean provider scan before every GUI launch,
-and a direct Python launch also scans when `HubEngine` starts. Restart the Hub
-after installing a new provider. **Reload** refreshes saved profiles/account
-data; it does not maintain a separate installation-discovery cache.
+The Windows launcher scans providers before every GUI start. A direct Python
+launch runs the same discovery through the engine. Restart the Hub after
+installing a provider.
 
-Discovery precedence is deterministic:
+Discovery checks, in order:
 
-1. A valid `AI_HUB_*_PATH` environment override
-2. On Windows, an executable CLI staged from the installed Store Codex package
-3. The current process `PATH`
-4. Per-user native installer locations
-5. WinGet, Microsoft Store/AppX, conventional Program Files, and provider bundle locations
-6. A compatibility probe if the shared scanner itself fails
+1. Valid `AI_HUB_*_PATH` overrides.
+2. A runnable Store Codex CLI staged under the Hub runtime.
+3. The current process `PATH`.
+4. Per-user native installer and package-manager locations.
+5. Microsoft Store/AppX, registry, Program Files, and provider bundle locations.
+6. A bounded compatibility probe if the shared scanner fails.
 
-An invalid override produces a warning in the discovery report but does not block fallback discovery. Missing providers are represented as missing capabilities; they are never treated as a fatal launcher error.
-
-The Windows scan covers these supported surfaces:
-
-| Provider | Desktop | CLI / agent |
-|---|---|---|
-| Codex | Microsoft Store/AppX package | Store CLI staged under Hub runtime, `codex` on `PATH`, WinGet/user bins, npm-style user bins |
-| Claude | Claude Desktop AppX or conventional install | `claude` on `PATH`, native `~/.local/bin`, WinGet, npm, or Claude Desktop's bundled Claude Code |
-| Cursor | `Cursor.exe`, App Paths registry, Program Files, or per-user install | `cursor` plus the separate `cursor-agent`/`agent` installation |
-| Antigravity | Antigravity 2.0 per-user or Program Files install | Official `agy` user install, `PATH`, or configured override |
-
-The machine-local result is written atomically to:
+The report is written atomically to:
 
 ```text
 %USERPROFILE%\.codex-account-launcher\provider-discovery.json
 ```
 
-Current Store Codex builds can expose a physical `WindowsApps` path that cannot
-be launched directly by another process. In that case the scanner copies only
-the installed package's signed `codex.exe` to
-`%USERPROFILE%\.codex-account-launcher\provider-tools\codex\codex.exe`. It is
-checked on every launch and replaced only when the installed package changes.
-No login, configuration, conversation, or account data is copied with it.
+It contains paths, discovery sources, versions, and warnings. It does not
+serialize credentials, cookies, refresh tokens, API keys, conversations, or
+account state. Store Codex compatibility staging copies only the installed
+package's signed `codex.exe`, never its login or configuration files.
 
-The report contains installation paths, discovery sources, versions, and warnings. It does not read or serialize provider credentials, cookies, refresh tokens, or API keys. To regenerate it manually, run:
+Portable and managed installations can use these overrides:
 
-```bat
-py -3 ai_account_hub\core\provider_discovery.py --write-report
+```text
+AI_HUB_CODEX_CLI_PATH          AI_HUB_CODEX_DESKTOP_PATH
+AI_HUB_CLAUDE_CLI_PATH         AI_HUB_CLAUDE_DESKTOP_PATH
+AI_HUB_CURSOR_CLI_PATH         AI_HUB_CURSOR_AGENT_PATH
+AI_HUB_CURSOR_DESKTOP_PATH     AI_HUB_ANTIGRAVITY_CLI_PATH
+AI_HUB_ANTIGRAVITY_DESKTOP_PATH
+AI_HUB_NODE_PATH               AI_HUB_GIT_PATH
+AI_HUB_BROWSER_PATH
 ```
 
-### Path Overrides
+The complete discovery contract is in
+[Provider Discovery](docs/PROVIDER_DISCOVERY.md).
 
-Use overrides for portable installs, managed machines, custom drives, or provider builds that do not register a normal command:
+## Local Data And Privacy
 
-- `AI_HUB_CODEX_CLI_PATH`
-- `AI_HUB_CODEX_DESKTOP_PATH`
-- `AI_HUB_CLAUDE_CLI_PATH`
-- `AI_HUB_CLAUDE_DESKTOP_PATH`
-- `AI_HUB_CURSOR_DESKTOP_PATH`
-- `AI_HUB_CURSOR_CLI_PATH`
-- `AI_HUB_CURSOR_AGENT_PATH`
-- `AI_HUB_ANTIGRAVITY_DESKTOP_PATH`
-- `AI_HUB_ANTIGRAVITY_CLI_PATH`
-- `AI_HUB_NODE_PATH`
-- `AI_HUB_GIT_PATH`
-- `AI_HUB_BROWSER_PATH`
-
-Legacy aliases such as `CODEX_CLI_PATH`, `CLAUDE_CODE_PATH`, `CURSOR_PATH`, and `ANTIGRAVITY_PATH` remain accepted. Prefer the `AI_HUB_*` names in new setups because their ownership is unambiguous.
-
-### Official Install Sources
-
-- [Codex documentation](https://developers.openai.com/codex/)
-- [Claude Code setup](https://code.claude.com/docs/en/getting-started)
-- [Cursor CLI installation](https://docs.cursor.com/en/cli/installation)
-- [Antigravity CLI installation](https://antigravity.google/docs/cli-install)
-- [Antigravity 2.0 downloads](https://antigravity.google/download)
-
-## Local Data
-
-The app stores local launcher data outside the repository, mainly under:
+Hub-owned runtime data lives outside the repository, primarily under:
 
 - `%USERPROFILE%\.codex-account-launcher`
 - `%USERPROFILE%\.codex-accounts`
 - `%USERPROFILE%\.ai-account-hub`
 
-Provider auth files, browser cookie profiles, local QA captures, lock files, and generated icon caches are intentionally ignored by Git.
+Use **File > Local data...** to inspect Hub-managed storage separately from
+official provider history. Safe cleanup removes only old numeric analytics rows
+and disposable isolated-browser caches. It does not remove account profiles,
+cookies, captured desktop sessions, or official Codex and Claude history.
 
-Use **File → Local data...** to see the size of Hub-managed data separately
-from official Codex and Claude files. The safe cleanup keeps 400 days of numeric
-analytics and removes only old Hub database rows and disposable caches inside
-isolated browser profiles. It does not remove accounts, cookies, saved logins,
-desktop states, or official provider history.
+The analytics cache does not retain prompt text, responses, source code, diffs,
+command payloads, tool output, raw file paths, email addresses, or account names.
 
-Provider icon files are discovered at runtime. You can override them with:
+## Platform Support
 
-- `AI_HUB_CODEX_ICON_PATH`
-- `AI_HUB_CLAUDE_ICON_PATH`
-- `AI_HUB_CURSOR_ICON_PATH`
-- `AI_HUB_ANTIGRAVITY_ICON_PATH`
+Version 1.1.0 is Windows-first. Much of the Qt UI and provider discovery layer
+is portable, but process control, packaged-resource paths, state readers, tray
+placement, and browser-session handling need native adapters and testing before
+macOS or Linux can be called supported.
 
-## Provider Notes
+See [macOS and Linux porting](docs/PORTING_MACOS_LINUX.md) for the standalone
+packaging, tray, notification, discovery, and acceptance-test plan.
 
-Some providers do not expose all quota data locally. In those cases the app shows an honest state such as "not exposed by Cursor CLI" or "not reliably exposed yet" instead of fabricating a percentage.
+## Project Documentation
 
-For Claude, see [Claude Account Setup](docs/CLAUDE_ACCOUNT_SETUP.md). The short
-version: choose **Claude Code (paid)**, use **Login** for the isolated Claude
-Code CLI profile, then use **Desktop Login** to capture the matching Claude
-Desktop session when desktop switching is needed. Switch accounts through the
-Hub instead of Claude's in-app **Log out** command; provider logout can revoke
-the saved session and require Desktop Login again.
+- [Release notes](RELEASE_NOTES.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Provider discovery](docs/PROVIDER_DISCOVERY.md)
+- [Real-world usage analytics](docs/REAL_WORLD_USAGE_ANALYTICS.md)
+- [macOS and Linux porting](docs/PORTING_MACOS_LINUX.md)
 
-Antigravity structured turns require a healthy standalone `agy` command. If only a broken shim is found, the app opens the native Antigravity desktop fallback and reports the CLI state in the UI.
-
-Discovery proves that an executable exists and, where practical, that `--version` responds. It does not prove that an account is authenticated. Login and usage probes remain profile-specific and are performed through the official provider tools.
-
-No operating-system reboot is required after installing a provider. Restart the
-Hub to run the clean installation scan again.
-
-## Development
-
-Useful checks:
-
-```bat
-python -m compileall -q ai_account_hub
-```
-
-The Qt front-end lives in `ai_account_hub\ui\`; the package layout and internals
-are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-## Porting
-
-This repository is Windows-first today. See [docs/PROVIDER_DISCOVERY.md](docs/PROVIDER_DISCOVERY.md) for the discovery contract and [docs/PORTING_MACOS_LINUX.md](docs/PORTING_MACOS_LINUX.md) for macOS/Linux contributor instructions.
+The Windows executable definition lives in
+[`packaging/AI-Account-Hub.spec`](packaging/AI-Account-Hub.spec), and the same
+build can be run locally with `scripts\build-windows.ps1 -InstallDependencies`.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
-This project is not affiliated with OpenAI, Anthropic, Cursor, Google, or any provider mentioned above.
+This project is not affiliated with OpenAI, Anthropic, Cursor, Google, or any
+provider mentioned above.

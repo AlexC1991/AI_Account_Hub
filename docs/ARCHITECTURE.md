@@ -190,9 +190,10 @@ contain provider tokens, cookies, auth files, or a full environment dump.
 
 ## Standalone packaging
 
-A frozen build must bundle provider icons, the Codex Node helper, Qt plugins,
+A frozen build bundles provider icons, the Codex Node helper, Qt plugins,
 and any public docs still linked by the Help menu. It must resolve those files
-through an application-resource helper instead of assuming the source checkout
+at their source-relative paths so `__file__` resolves them in PyInstaller's
+one-folder resource directory instead of assuming the source checkout
 is beside `__file__`.
 
 User state must remain outside the frozen directory or macOS `.app` bundle. See

@@ -94,14 +94,14 @@ TOKEN_SEGMENTS = (
 )
 LINE_CHART_VIEWS = (
     ("Token activity", "Model activity over time", "Tokens by model and effort", "line", "totalTokens", ()),
-    ("Completed tasks", "Completed tasks over time", "Provider completion events by model", "line", "completedTasks", ()),
+    ("Completed tasks", "Completed tasks over time", "Completed work recorded for each model", "line", "completedTasks", ()),
     ("5h limit burn", "5h limit burn over time", "Measured movement from trustworthy intervals", "line", "shortBurn", ()),
     ("Weekly limit burn", "Weekly limit burn over time", "Positive movement with reset decreases excluded", "line", "weeklyBurn", ()),
     ("Edits", "Edit activity over time", "Observed edit operations by model", "line", "edits", ()),
     ("Files", "File activity over time", "Observed changed-file counts by model", "line", "filesChanged", ()),
     ("Tests", "Test activity over time", "Observed test commands by model", "line", "tests", ()),
     ("Commands", "Command activity over time", "Observed command activity by model", "line", "commands", ()),
-    ("Active time", "Active task time over time", "Observed provider task spans by model", "line", "activeMs", ()),
+    ("Active time", "Active task time over time", "Time recorded in model sessions", "line", "activeMs", ()),
 )
 BAR_CHART_VIEWS = (
     ("Completed work", "Completed work", "Task completions by used model", "bar", "completedTasks", ()),
@@ -151,17 +151,17 @@ COMPARE_LINE_VIEWS = tuple(
     }
 )
 COMPARE_BAR_VIEWS = (
-    ("Token totals", "Token totals by model", "True totals from zero, with each difference measured against the baseline", "comparison_bar", "totalTokens", ()),
-    ("Completed tasks", "Completed tasks by model", "True provider completion totals from zero", "comparison_bar", "completedTasks", ()),
-    ("Edits", "Edits by model", "True observed edit totals from zero", "comparison_bar", "edits", ()),
-    ("Files", "Changed files by model", "True unique changed-file totals from zero", "comparison_bar", "filesChanged", ()),
-    ("Tests", "Tests by model", "True observed test-command totals from zero", "comparison_bar", "tests", ()),
-    ("Commands", "Commands by model", "True observed command totals from zero", "comparison_bar", "commands", ()),
-    ("Active time", "Active time by model", "True observed task spans from zero", "comparison_bar", "activeMs", ()),
-    ("5h limit burn", "5h limit burn by model", "True measured percentage-point movement from zero", "comparison_bar", "shortBurn", ()),
-    ("Weekly limit burn", "Weekly limit burn by model", "True measured percentage-point movement from zero", "comparison_bar", "weeklyBurn", ()),
-    ("Tokens per task", "Tokens per completed task", "True resource-per-completion values from zero", "comparison_bar", "tokensPerTask", ()),
-    ("Tasks per 1M", "Tasks per 1M tokens", "True completion-density values from zero", "comparison_bar", "tasksPerMillion", ()),
+    ("Token totals", "Token totals by model", "Observed totals from zero; differences use the baseline", "comparison_bar", "totalTokens", ()),
+    ("Completed tasks", "Completed tasks by model", "Completed work totals from zero", "comparison_bar", "completedTasks", ()),
+    ("Edits", "Edits by model", "Observed edit totals from zero", "comparison_bar", "edits", ()),
+    ("Files", "Changed files by model", "Unique changed-file totals from zero", "comparison_bar", "filesChanged", ()),
+    ("Tests", "Tests by model", "Observed test totals from zero", "comparison_bar", "tests", ()),
+    ("Commands", "Commands by model", "Observed command totals from zero", "comparison_bar", "commands", ()),
+    ("Active time", "Active time by model", "Recorded session time from zero", "comparison_bar", "activeMs", ()),
+    ("5h limit burn", "5h limit burn by model", "Measured percentage-point movement from zero", "comparison_bar", "shortBurn", ()),
+    ("Weekly limit burn", "Weekly limit burn by model", "Measured percentage-point movement from zero", "comparison_bar", "weeklyBurn", ()),
+    ("Tokens per task", "Tokens per completed task", "Resources per completion from zero", "comparison_bar", "tokensPerTask", ()),
+    ("Tasks per 1M", "Tasks per 1M tokens", "Completion density from zero", "comparison_bar", "tasksPerMillion", ()),
 )
 
 
@@ -176,6 +176,18 @@ def _metric_label(metric: object) -> str:
     words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", key)
     words = re.sub(r"[_-]+", " ", words)
     return " ".join(words.split()).capitalize()
+
+
+def _friendly_work_scope(value: object) -> str:
+    """Turn analytics provenance into concise user-facing source copy."""
+
+    text = str(value or "").strip()
+    known = {
+        "shared Codex history": "Shared Codex activity",
+        "visible account history": "Account activity",
+        "isolated profile history": "Profile activity",
+    }
+    return known.get(text, text.replace(" history", " activity"))
 
 
 def _label(text: str, kind: str = "", *, bold: bool = False, size: int = 0) -> QLabel:
@@ -1212,7 +1224,7 @@ class DensityPanel(QFrame):
         for key, value in values.items():
             self.values[key].setText(value)
         self.scope.setText(
-            f"{group.get('provider', '').title()} | {group.get('workScope', '')} | "
+            f"{group.get('provider', '').title()} | {_friendly_work_scope(group.get('workScope'))} | "
             f"5h burn {_format_points(group.get('shortBurn', 0))} | "
             f"Weekly burn {_format_points(group.get('weeklyBurn', 0))}"
         )
@@ -1274,5 +1286,5 @@ __all__ = [
     "MODEL_LINE_VIEWS", "OVERVIEW_BAR_VIEWS", "OVERVIEW_LINE_VIEWS",
     "PRODUCTIVITY_BAR_VIEWS", "PRODUCTIVITY_LINE_VIEWS",
     "_chart_rows", "_format_duration", "_format_number", "_format_points",
-    "_format_tokens", "_inline_copy", "_label",
+    "_format_tokens", "_friendly_work_scope", "_inline_copy", "_label",
 ]

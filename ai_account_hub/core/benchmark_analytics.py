@@ -1344,7 +1344,8 @@ def build_head_to_head(
         if not isinstance(request, dict) or len(selected) >= 4:
             continue
         base_key = str(request.get("baseModelKey") or "")
-        reasoning = str(request.get("reasoning") or "all")
+        reasoning_value = request.get("reasoning", "all")
+        reasoning = "all" if reasoning_value is None else str(reasoning_value)
         selection_key = f"{base_key}::{reasoning}"
         if not base_key or selection_key in selected_keys:
             continue

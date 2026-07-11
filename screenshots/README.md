@@ -1,32 +1,26 @@
 # Screenshots
 
-Images in this folder are shown on the project's GitHub page (they are embedded
-from the top-level [`README.md`](../README.md)).
+This folder contains only the images used by the public project README. Keep the
+set small, current, and free of authentication details.
 
-## How to add one
+| File | Purpose |
+|---|---|
+| `dashboard.png` | Current Accounts workspace and calendar |
+| `day-detail.png` | Selected-day usage and reset details |
+| `statistics-overview.png` | Resource and completed-work overview |
+| `statistics-models.png` | Base models, reasoning filters, and token categories |
+| `statistics-productivity.png` | Observable work and measured limit movement |
+| `statistics-compare.png` | Same-model reasoning comparison and baseline deltas |
+| `tray-widget.png` | Compact Best Next account widget |
+| `signal-rail.png` | Hub-styled account-limit warning |
 
-1. Take a screenshot of the app (e.g. the Accounts dashboard). For a clean,
-   private-data-free capture, launch demo mode first — **Help → View demo
-   (sample data)**, or set `AI_HUB_DEMO=1` before starting — then screenshot
-   that window.
-2. Save the PNG in this folder using one of the names the README already
-   references, so it appears automatically:
+## Capture Rules
 
-   | File | Shows |
-   |---|---|
-   | `dashboard.png` | The main Accounts dashboard (hero image) |
-   | `calendar.png` | The usage calendar with a reset-day detail popup |
-   | `day-detail.png` | A day's usage broken down by account |
-   | `account-detail.png` | The right-hand account detail / combined-stats rail |
-   | `themes.png` | The built-in theme menu |
+1. Use **Help > View demo (sample data)** for account screenshots.
+2. Never include real email addresses, login state, cookies, tokens, or paths.
+3. Use lowercase, hyphenated filenames rather than timestamped capture names.
+4. Prefer one complete workflow image over several small crops of the same UI.
+5. Replace outdated images instead of accumulating an archive in this folder.
 
-3. To add more, drop the file here and reference it from `README.md` with a
-   relative path, e.g. `![Themes](screenshots/themes.png)`.
-
-## Tips
-
-- **Format:** PNG for UI (crisp text); GIF/MP4 only for short recordings.
-- **Width:** ~1400–1720px looks good on GitHub without being huge.
-- **Naming:** lowercase, hyphenated, descriptive (`account-detail.png`, not
-  `Screenshot 2026-07-05.png`).
-- Avoid real account emails/usage in committed images — use demo mode.
+Signal Rail captures must render the real `SignalRailToast` component with a
+synthetic `AccountNotification`; do not substitute a visual mock.

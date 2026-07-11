@@ -44,6 +44,7 @@ from ai_account_hub.ui.screens.statistics_charts import (
     _format_number,
     _format_points,
     _format_tokens,
+    _friendly_work_scope,
     _inline_copy,
     _label,
 )
@@ -128,11 +129,6 @@ class StatisticsScreen(QWidget):
             title_size=18,
         )
         heading.addWidget(overview_copy, 1)
-        self.coverage = ElidedLabel("No activity scanned")
-        self.coverage.setObjectName("muted")
-        self.coverage.setMaximumWidth(390)
-        self.coverage.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        heading.addWidget(self.coverage)
         layout.addWidget(heading_host)
 
         self.summary_panel = QFrame()
@@ -146,9 +142,6 @@ class StatisticsScreen(QWidget):
         summary_header.setContentsMargins(12, 8, 12, 5)
         summary_header.addWidget(_label("Usage summary", bold=True, size=12))
         summary_header.addStretch(1)
-        self.summary_context = _label("All visible accounts | 30 days", "faint")
-        self.summary_context.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        summary_header.addWidget(self.summary_context)
         summary_layout.addWidget(summary_header_host)
         kpi_host = QWidget()
         kpis = QHBoxLayout(kpi_host)
@@ -223,8 +216,6 @@ class StatisticsScreen(QWidget):
         layout.addWidget(self.charts_host)
 
         export_row = QHBoxLayout()
-        self.detail = _label("Select a point to inspect its numeric detail", "faint")
-        export_row.addWidget(self.detail)
         export_row.addStretch(1)
         csv_button = make_button("Export CSV", "ghost")
         png_button = make_button("Export PNG", "ghost")
@@ -233,8 +224,6 @@ class StatisticsScreen(QWidget):
         export_row.addWidget(csv_button)
         export_row.addWidget(png_button)
         layout.addLayout(export_row)
-        for chart in self.charts:
-            chart.hovered.connect(lambda payload: self.detail.setText(BenchmarkChart.point_text(payload).replace("\n", " | ")))
 
         layout.addWidget(self.summary_panel)
 
@@ -298,12 +287,6 @@ class StatisticsScreen(QWidget):
         self.bottom_view.currentIndexChanged.connect(self._bottom_view_changed)
         layout.addWidget(self.comparison_panel)
 
-        self.telemetry_note = ElidedLabel(
-            "Local numeric aggregates only. No quality score, survey, task rating or synthetic benchmark.",
-        )
-        self.telemetry_note.setObjectName("faint")
-        layout.addWidget(self.telemetry_note)
-
         # Recompose the original long page into the selected numbered Focus
         # Steps workspace while retaining the established widgets and actions.
         summary_layout.removeWidget(self.density)
@@ -311,7 +294,6 @@ class StatisticsScreen(QWidget):
         layout.removeWidget(self.summary_panel)
         layout.insertWidget(1, self.summary_panel)
         layout.removeWidget(self.comparison_panel)
-        layout.removeWidget(self.telemetry_note)
         scroll.setWidget(self._content)
 
         self.section_charts = {"overview": list(self.charts)}
@@ -321,16 +303,12 @@ class StatisticsScreen(QWidget):
             "overview": (OVERVIEW_LINE_VIEWS, OVERVIEW_BAR_VIEWS),
         }
         self.section_chart_hosts = {"overview": self.charts_host}
-        self.section_details = {"overview": self.detail}
-        self.section_coverage = {"overview": self.coverage}
-
         model_scroll, self.model_content, model_layout = self._new_statistics_page()
-        self.model_coverage = self._add_page_heading(
+        self._add_page_heading(
             model_layout,
             "Models",
             "Choose a model, then filter or sort its observed reasoning settings",
         )
-        self.section_coverage["models"] = self.model_coverage
         controls = QFrame()
         controls.setObjectName("card")
         control_layout = QGridLayout(controls)
@@ -351,8 +329,6 @@ class StatisticsScreen(QWidget):
         self.model_sort.addItem("Model name", "name")
         self.model_sort.addItem("Reasoning", "reasoning")
         self.model_sort.setMinimumWidth(150)
-        self.model_scope = _label("All base models and reasoning settings", "faint")
-        self.model_scope.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self._arrange_model_controls(False)
         model_layout.addWidget(controls)
         self.base_model_filter.currentIndexChanged.connect(
@@ -370,20 +346,14 @@ class StatisticsScreen(QWidget):
         self.section_chart_hosts["models"] = model_host
         self._add_section_export_row("models", model_layout)
         model_layout.addWidget(self.comparison_panel)
-        model_note = ElidedLabel(
-            "Base-model rows combine resource totals; chart legends preserve each exposed reasoning setting.",
-        )
-        model_note.setObjectName("faint")
-        model_layout.addWidget(model_note)
         model_scroll.setWidget(self.model_content)
 
         productivity_scroll, self.productivity_content, productivity_layout = self._new_statistics_page()
-        self.productivity_coverage = self._add_page_heading(
+        self._add_page_heading(
             productivity_layout,
             "Productivity",
             "Coding activity observed alongside tokens, active time, and limit use",
         )
-        self.section_coverage["productivity"] = self.productivity_coverage
         productivity_layout.addWidget(self.density)
         productivity_host = self._create_chart_pair(
             "productivity", productivity_layout,
@@ -393,16 +363,14 @@ class StatisticsScreen(QWidget):
         self._add_section_export_row("productivity", productivity_layout)
         self.productivity_journal_panel, self.productivity_journal = self._create_journal_panel()
         productivity_layout.addWidget(self.productivity_journal_panel)
-        productivity_layout.addWidget(self.telemetry_note)
         productivity_scroll.setWidget(self.productivity_content)
 
         compare_scroll, self.compare_content, compare_layout = self._new_statistics_page()
-        self.compare_coverage = self._add_page_heading(
+        self._add_page_heading(
             compare_layout,
             "Compare",
             "Compare two to four observed models against one clear baseline",
         )
-        self.section_coverage["compare"] = self.compare_coverage
         self.compare_roster = QFrame()
         self.compare_roster.setObjectName("card")
         roster_layout = QVBoxLayout(self.compare_roster)
@@ -414,6 +382,14 @@ class StatisticsScreen(QWidget):
             "Select models and reasoning settings; the first selection sets the reference line",
         )
         roster_header.addWidget(roster_copy, 1)
+        self.compare_reasoning_button = make_button("Compare reasoning", "ghost")
+        self.compare_reasoning_button.setToolTip(
+            "Compare the observed reasoning settings for the baseline model"
+        )
+        self.compare_reasoning_button.clicked.connect(
+            lambda _checked=False: self._compare_reasoning_variants()
+        )
+        roster_header.addWidget(self.compare_reasoning_button)
         self.compare_add_button = make_button("+ Add model", "primary")
         self.compare_add_button.setToolTip("Add another model to this comparison")
         self.compare_add_button.clicked.connect(lambda _checked=False: self._add_compare_row())
@@ -424,6 +400,8 @@ class StatisticsScreen(QWidget):
         self.compare_roster_layout.setSpacing(6)
         roster_layout.addLayout(self.compare_roster_layout)
         self.compare_rows: list[dict] = []
+        self._reasoning_compare_state: dict | None = None
+        self._reasoning_compare_edited = False
         self._add_compare_row(render=False)
         self._add_compare_row(render=False)
         self.compare_roster_note = ElidedLabel("")
@@ -470,11 +448,6 @@ class StatisticsScreen(QWidget):
             compare_header.setSectionResizeMode(column, QHeaderView.ResizeToContents)
         compare_table_layout.addWidget(self.compare_table)
         compare_layout.addWidget(self.compare_table_panel)
-        compare_note = ElidedLabel(
-            "Overlay lines share one date scale. Bars show full values from zero; labels and table deltas compare with the first row.",
-        )
-        compare_note.setObjectName("faint")
-        compare_layout.addWidget(compare_note)
         compare_scroll.setWidget(self.compare_content)
 
         self.statistics_stack = QStackedWidget()
@@ -510,9 +483,6 @@ class StatisticsScreen(QWidget):
             rail_layout.addWidget(button)
             self.statistics_nav_buttons[key] = button
         rail_layout.addStretch(1)
-        self.rail_scope = _label("All accounts\n30 days", "faint")
-        self.rail_scope.setWordWrap(True)
-        rail_layout.addWidget(self.rail_scope)
 
         body = QWidget()
         body_layout = QHBoxLayout(body)
@@ -534,20 +504,14 @@ class StatisticsScreen(QWidget):
         layout.setSpacing(10)
         return scroll, content, layout
 
-    def _add_page_heading(self, layout: QVBoxLayout, title: str, caption: str) -> QLabel:
+    def _add_page_heading(self, layout: QVBoxLayout, title: str, caption: str) -> None:
         host = QWidget()
         host.setFixedHeight(32)
         row = QHBoxLayout(host)
         row.setContentsMargins(0, 0, 0, 0)
         copy, _title, _caption = _inline_copy(title, caption, title_size=18)
         row.addWidget(copy, 1)
-        coverage = ElidedLabel("No activity scanned")
-        coverage.setObjectName("muted")
-        coverage.setMaximumWidth(390)
-        coverage.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        row.addWidget(coverage)
         layout.addWidget(host)
-        return coverage
 
     def _create_chart_pair(
         self,
@@ -603,8 +567,6 @@ class StatisticsScreen(QWidget):
 
     def _add_section_export_row(self, section: str, layout: QVBoxLayout) -> None:
         row = QHBoxLayout()
-        detail = _label("Select a point to inspect its numeric detail", "faint")
-        row.addWidget(detail)
         row.addStretch(1)
         csv_button = make_button("Export CSV", "ghost")
         png_button = make_button("Export PNG", "ghost")
@@ -613,13 +575,6 @@ class StatisticsScreen(QWidget):
         row.addWidget(csv_button)
         row.addWidget(png_button)
         layout.addLayout(row)
-        self.section_details[section] = detail
-        for chart in self.section_charts[section]:
-            chart.hovered.connect(
-                lambda payload, label=detail: label.setText(
-                    BenchmarkChart.point_text(payload).replace("\n", " | ")
-                )
-            )
 
     def _create_journal_panel(self) -> tuple[QFrame, QTableWidget]:
         panel = QFrame()
@@ -699,6 +654,7 @@ class StatisticsScreen(QWidget):
         )
         self._refresh_compare_row_roles()
         if render:
+            self._mark_reasoning_compare_edited()
             self._sync_compare_controls(self._visible_groups())
             self._render()
 
@@ -707,6 +663,7 @@ class StatisticsScreen(QWidget):
             return
         self.compare_rows.remove(row)
         row["host"].deleteLater()
+        self._mark_reasoning_compare_edited()
         self._refresh_compare_row_roles()
         self._render()
 
@@ -759,25 +716,54 @@ class StatisticsScreen(QWidget):
                     used_defaults.add(selected_model)
                 self._sync_compare_reasoning(row, groups)
             self._refresh_compare_row_roles()
+            self._update_compare_reasoning_button(groups)
         finally:
             self._syncing_compare_controls = False
+
+    def _reasoning_variants_for_model(
+        self, model_key: str, groups: list[dict]
+    ) -> list[tuple[str, str]]:
+        variants = {
+            str(group.get("reasoningEffort") or ""):
+            str(group.get("reasoningEffortName") or "") or "Default"
+            for group in groups
+            if base_model_key(group) == model_key
+        }
+        return sorted(
+            variants.items(),
+            key=lambda item: (self._reasoning_rank(item[0]), item[1].lower()),
+        )
+
+    def _update_compare_reasoning_button(self, groups: list[dict]) -> None:
+        if not hasattr(self, "compare_reasoning_button") or not self.compare_rows:
+            return
+        if self._reasoning_compare_state is not None:
+            self.compare_reasoning_button.setText("Restore comparison")
+            self.compare_reasoning_button.setEnabled(True)
+            self.compare_reasoning_button.setToolTip(
+                "Restore the model and reasoning selections used before this comparison"
+            )
+            return
+        baseline_model = str(self.compare_rows[0]["model"].currentData() or "")
+        count = len(self._reasoning_variants_for_model(baseline_model, groups))
+        self.compare_reasoning_button.setText("Compare reasoning")
+        self.compare_reasoning_button.setEnabled(count >= 2)
+        self.compare_reasoning_button.setToolTip(
+            "Compare the observed reasoning settings for the baseline model"
+            if count >= 2 else
+            "This model has fewer than two observed reasoning settings"
+        )
 
     def _sync_compare_reasoning(self, row: dict, groups: list[dict]) -> None:
         model_key = str(row["model"].currentData() or "")
         reasoning: QComboBox = row["reasoning"]
-        selected = str(reasoning.currentData() or "all")
-        variants = {}
-        for group in groups:
-            if base_model_key(group) != model_key:
-                continue
-            effort = str(group.get("reasoningEffort") or "")
-            variants[effort] = str(group.get("reasoningEffortName") or "") or "Default"
+        selected_data = reasoning.currentData()
+        selected = "all" if selected_data is None else str(selected_data)
+        variants = self._reasoning_variants_for_model(model_key, groups)
         reasoning.blockSignals(True)
         reasoning.clear()
         reasoning.addItem("All reasoning", "all")
-        for effort, label in sorted(
-            variants.items(), key=lambda item: (self._reasoning_rank(item[0]), item[1].lower())
-        ):
+        for effort, label in variants:
             reasoning.addItem(label, effort)
         selected_index = reasoning.findData(selected)
         reasoning.setCurrentIndex(selected_index if selected_index >= 0 else 0)
@@ -787,10 +773,95 @@ class StatisticsScreen(QWidget):
         if getattr(self, "_syncing_compare_controls", False):
             return
         self._sync_compare_reasoning(row, self._visible_groups())
+        self._update_compare_reasoning_button(self._visible_groups())
         self._compare_controls_changed()
+
+    def _compare_reasoning_variants(self) -> None:
+        """Toggle between a model's reasoning efforts and the previous roster."""
+
+        if not self.compare_rows:
+            return
+        groups = self._visible_groups()
+        if self._reasoning_compare_state is not None:
+            snapshot = list(self._reasoning_compare_state.get("snapshot") or [])
+            self._reasoning_compare_state = None
+            self._reasoning_compare_edited = False
+            self._set_compare_selections(snapshot, groups)
+            self._update_compare_reasoning_button(groups)
+            self._render()
+            return
+
+        model_key = str(self.compare_rows[0]["model"].currentData() or "")
+        all_variants = self._reasoning_variants_for_model(model_key, groups)
+        if len(all_variants) < 2:
+            self.compare_roster_note.setText(
+                "This model needs at least two observed reasoning settings to compare."
+            )
+            return
+        snapshot = [
+            {
+                "model": str(row["model"].currentData() or ""),
+                "reasoning": (
+                    "all"
+                    if row["reasoning"].currentData() is None
+                    else str(row["reasoning"].currentData())
+                ),
+            }
+            for row in self.compare_rows
+        ]
+        variants = all_variants[:4]
+        model_name = str(self.compare_rows[0]["model"].currentText() or "Model")
+        selections = [
+            {"model": model_key, "reasoning": effort}
+            for effort, _label_text in variants
+        ]
+        self._set_compare_selections(selections, groups)
+        self._reasoning_compare_state = {
+            "snapshot": snapshot,
+            "model": model_name,
+            "shown": len(variants),
+            "total": len(all_variants),
+        }
+        self._reasoning_compare_edited = False
+        self._update_compare_reasoning_button(groups)
+        self._render()
+
+    def _set_compare_selections(self, selections: list[dict], groups: list[dict]) -> None:
+        """Resize and populate the comparison roster without intermediate renders."""
+
+        if len(selections) < 2:
+            return
+        while len(self.compare_rows) < len(selections):
+            self._add_compare_row(render=False)
+        while len(self.compare_rows) > len(selections):
+            removed = self.compare_rows.pop()
+            removed["host"].deleteLater()
+        self._sync_compare_controls(groups)
+        self._syncing_compare_controls = True
+        try:
+            for row, selection in zip(self.compare_rows, selections):
+                model: QComboBox = row["model"]
+                model.blockSignals(True)
+                model.setCurrentIndex(model.findData(str(selection.get("model") or "")))
+                model.blockSignals(False)
+                self._sync_compare_reasoning(row, groups)
+                reasoning: QComboBox = row["reasoning"]
+                reasoning.blockSignals(True)
+                reasoning.setCurrentIndex(
+                    reasoning.findData(str(selection.get("reasoning") or ""))
+                )
+                reasoning.blockSignals(False)
+        finally:
+            self._syncing_compare_controls = False
+        self._refresh_compare_row_roles()
+
+    def _mark_reasoning_compare_edited(self) -> None:
+        if self._reasoning_compare_state is not None:
+            self._reasoning_compare_edited = True
 
     def _compare_controls_changed(self) -> None:
         if not getattr(self, "_syncing_compare_controls", False):
+            self._mark_reasoning_compare_edited()
             self._render()
 
     def _head_to_head(self) -> dict:
@@ -800,7 +871,11 @@ class StatisticsScreen(QWidget):
         selections = [
             {
                 "baseModelKey": str(row["model"].currentData() or ""),
-                "reasoning": str(row["reasoning"].currentData() or "all"),
+                "reasoning": (
+                    "all"
+                    if row["reasoning"].currentData() is None
+                    else str(row["reasoning"].currentData())
+                ),
             }
             for row in self.compare_rows
         ]
@@ -897,7 +972,6 @@ class StatisticsScreen(QWidget):
                 (self.reasoning_filter, 0, 3, 1, 1),
                 (labels["sort"], 0, 4, 1, 1),
                 (self.model_sort, 0, 5, 1, 1),
-                (self.model_scope, 0, 6, 1, 1),
             )
             stretch_column = 6
         else:
@@ -908,9 +982,8 @@ class StatisticsScreen(QWidget):
                 (self.reasoning_filter, 0, 4, 1, 2),
                 (labels["sort"], 1, 0, 1, 1),
                 (self.model_sort, 1, 1, 1, 2),
-                (self.model_scope, 1, 3, 1, 3),
             )
-            stretch_column = 5
+            stretch_column = 3
         for widget, row, column, row_span, column_span in placements:
             layout.addWidget(widget, row, column, row_span, column_span)
         for column in range(7):
@@ -984,7 +1057,6 @@ class StatisticsScreen(QWidget):
         if generation is not None and generation != self._scan_generation:
             return
         self.scan_status.setText("Analytics unavailable")
-        self.telemetry_note.setText(f"Could not read local numeric activity: {message}")
         self.activity.emit(f"Model analytics failed: {message}")
 
     def _worker_finished(self) -> None:
@@ -1161,44 +1233,37 @@ class StatisticsScreen(QWidget):
         self.tiles["weekly"].set_data(
             _format_points(summary["weekly"]), "Measured increases; reset decreases excluded"
         )
-        self.summary_context.setText(
-            f"{self.account_filter.currentText()} | {self.range_filter.currentText()}"
-        )
         self.density.set_groups(base_groups)
         self._fill_comparison(model_base_groups)
         self._fill_journal()
         head_to_head = self._head_to_head()
         self._fill_head_to_head(head_to_head)
-        source = self._snapshot.get("sourceStats") or {}
-        coverage = (
-            f"{len(base_groups)} models · {len(groups)} configurations · "
-            f"{source.get('tasks', 0)} tasks · {source.get('files', 0)} history files"
-        )
-        self.coverage.setText(coverage)
-        self.productivity_coverage.setText(coverage)
-        selected_model = self.base_model_filter.currentText()
-        selected_reasoning = self.reasoning_filter.currentText()
-        self.model_coverage.setText(
-            f"{len(model_base_groups)} models · {len(model_groups)} visible reasoning series"
-        )
         compare_groups = list(head_to_head.get("groups") or [])
         requested_compare_rows = sum(
             1 for row in self.compare_rows if str(row["model"].currentData() or "")
         )
-        if len(compare_groups) < 2:
+        reasoning_state = self._reasoning_compare_state
+        if reasoning_state is not None and self._reasoning_compare_edited:
+            compare_note = "Reasoning comparison edited. Restore returns to the previous roster."
+        elif reasoning_state is not None:
+            shown = int(reasoning_state.get("shown") or 0)
+            total = int(reasoning_state.get("total") or shown)
+            count_text = (
+                f"{shown} of {total} observed settings"
+                if shown < total else
+                f"{shown} observed settings"
+            )
+            compare_note = (
+                f"Comparing {reasoning_state.get('model') or 'model'} reasoning: "
+                f"{count_text}. Restore returns to the previous roster."
+            )
+        elif len(compare_groups) < 2:
             compare_note = "Choose at least two different model/reasoning combinations."
         elif len(compare_groups) < requested_compare_rows:
             compare_note = "An exact duplicate selection is shown once; choose another model or reasoning setting."
         else:
             compare_note = "The first row is the baseline. Change either dropdown to update only that series."
         self.compare_roster_note.setText(compare_note)
-        self.compare_coverage.setText(
-            f"{len(compare_groups)} selected · {self.range_filter.currentText()} · first row is baseline"
-        )
-        self.model_scope.setText(f"{selected_model} | {selected_reasoning}")
-        self.rail_scope.setText(
-            f"{self.account_filter.currentText()}\n{self.range_filter.currentText()}"
-        )
         self._render_charts()
 
     def _render_charts(self) -> None:
@@ -1258,7 +1323,8 @@ class StatisticsScreen(QWidget):
             reasoning_text = ", ".join(reasoning_names) or "Default"
             model_item.setToolTip(
                 f"{group.get('modelName') or 'Model'}\n"
-                f"Reasoning: {reasoning_text}\n{group.get('workScope') or ''}"
+                f"Reasoning: {reasoning_text}\n"
+                f"Source: {_friendly_work_scope(group.get('workScope'))}"
             )
             self.comparison.setItem(row_index, 0, model_item)
             self.comparison.setItem(row_index, 1, QTableWidgetItem(reasoning_text))
