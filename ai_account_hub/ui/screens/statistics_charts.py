@@ -74,7 +74,7 @@ DISPLAY_METRIC_LABELS = {
     "cachedInputTokens": "Cached input tokens",
     "cacheCreationTokens": "Cache write tokens",
     "reasoningTokens": "Reasoning tokens",
-    "outputTokens": "Output tokens",
+    "outputTokens": "Output tokens (incl. thinking)",
     "unclassifiedTokens": "Unclassified tokens",
     "taskTokenMinimum": "Minimum task tokens",
     "taskTokenQ1": "Task-token first quartile",
@@ -91,8 +91,10 @@ TOKEN_SEGMENTS = (
     ("inputTokens", "Input", "#45b8ce"),
     ("cachedInputTokens", "Cached", "#55c47d"),
     ("cacheCreationTokens", "Cache write", "#d8b044"),
-    ("reasoningTokens", "Reasoning", "#a879e6"),
-    ("outputTokens", "Output", "#e77f52"),
+    # Reasoning is folded into output: Codex reports it separately but Anthropic
+    # bundles thinking into output_tokens, so a split slice unfairly shows Claude
+    # at 0 reasoning vs Codex's ~35%. One "Output (incl. thinking)" slice is fair.
+    ("outputTokens", "Output (incl. thinking)", "#e77f52"),
     ("unclassifiedTokens", "Unclassified", "#84909a"),
 )
 LINE_CHART_VIEWS = (
@@ -111,7 +113,7 @@ BAR_CHART_VIEWS = (
     ("Work tokens by model", "Work tokens by model", "Non-cache tokens; cache re-reads excluded", "bar", "workTokens", ()),
     ("5h limit burn", "5h limit burn by model", "Measured percentage-point movement", "bar", "shortBurn", ()),
     ("Weekly limit burn", "Weekly limit burn by model", "Reset decreases and long gaps excluded", "bar", "weeklyBurn", ()),
-    ("Token category mix", "Token category mix", "Input, cache, reasoning, output and unclassified", "stack", "totalTokens", ()),
+    ("Token category mix", "Token category mix", "Input, cache, output (thinking folded in) and unclassified", "stack", "totalTokens", ()),
     ("Engineering activity", "Engineering activity bundle", "Edits, files, tests and commands remain separate", "multi_bar", "", ("edits", "filesChanged", "tests", "commands")),
     ("Tokens per task", "Tokens per completed task", "A resource ratio, not a quality score", "bar", "tokensPerTask", ()),
     ("Tasks per 1M tokens", "Tasks per 1M tokens", "Observed completions normalized by tokens", "bar", "tasksPerMillion", ()),

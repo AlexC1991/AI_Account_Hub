@@ -140,8 +140,11 @@ class StatisticsCommunityMixin:
         control_layout.addWidget(self.community_ranking)
         control_layout.addStretch(1)
         control_layout.addWidget(_label("View", "sectionLabel"))
+        # Default to the time-series "Lines" view: the "Dots" scatter plots
+        # per-model aggregates that don't vary over the range, so it reads as a
+        # static image. Lines/Bars remain one click away.
         self.community_chart_mode = SegmentedSlider(
-            [("Dots", "dots"), ("Lines", "lines"), ("Bars", "bars")],
+            [("Lines", "lines"), ("Dots", "dots"), ("Bars", "bars")],
             self._tm.tokens,
             height=32,
         )

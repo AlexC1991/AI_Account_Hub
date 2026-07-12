@@ -14,22 +14,38 @@ from ai_account_hub.ui.screens.accounts_screen.workers import ActionWorker, Refr
 
 class _ActionsMixin:
     # ---------- real refresh (background thread, update in place) ----------
-    def refresh_all(self, reason: str = "refresh-all") -> None:
+    def _start_refresh(self, profiles: list[dict], reason: str, message: str) -> bool:
         from ai_account_hub import demo_data
         if demo_data.DEMO:
             self._append_log("Demo mode: refresh is disabled (showing sample data).")
-            return
+            return False
         if self._worker is not None and self._worker.isRunning():
-            return
-        if not self._profiles:
-            return
-        self._append_log("Refreshing all accounts…")
+            return False
+        if not profiles:
+            return False
+        self._append_log(message)
         self.refreshing.emit(True)
-        self._worker = RefreshWorker(self._profiles, reason=reason)
+        self._worker = RefreshWorker(profiles, reason=reason)
         self._worker.progress.connect(self._append_log)
         self._worker.one_done.connect(self._on_one_refreshed)
         self._worker.finished_all.connect(self._on_refresh_done)
         self._worker.start()
+        return True
+
+    def refresh_all(self, reason: str = "refresh-all") -> None:
+        self._start_refresh(self._profiles, reason, "Refreshing all accounts…")
+
+    def refresh_due_rollovers(self) -> bool:
+        """Poll only Codex profiles whose rollover evidence is due."""
+        due = [profile for profile in self._profiles if L.codex_rollover_poll_due(profile)]
+        if not due:
+            return False
+        names = ", ".join(str(profile.get("name") or "Codex account") for profile in due)
+        return self._start_refresh(
+            due,
+            "rollover-poll",
+            f"Verifying Codex limit rollover: {names}",
+        )
 
     def _on_one_refreshed(self, pid: str, _ok: bool) -> None:
         # update just this card + summary + (if selected) the detail rail, in place
@@ -39,6 +55,10 @@ class _ActionsMixin:
             self._update_detail()
 
     def _on_refresh_done(self) -> None:
+        # RefreshWorker may receive only one targeted profile. Persist the full
+        # in-memory collection so a selected-account refresh cannot replace
+        # profiles.json with that one-item subset.
+        data.save_profiles(self._profiles)
         self._append_log("Refresh complete.")
         self.refreshing.emit(False)
         self.profiles_changed.emit(list(self._profiles))
@@ -153,15 +173,11 @@ class _ActionsMixin:
             self._online_menu(profile)
             return
         if key == "refresh":
-            if self._worker is not None and self._worker.isRunning():
-                return
-            self._append_log(f"Refreshing {profile.get('name')}…")
-            self.refreshing.emit(True)
-            self._worker = RefreshWorker([profile], reason="manual")
-            self._worker.progress.connect(self._append_log)
-            self._worker.one_done.connect(self._on_one_refreshed)
-            self._worker.finished_all.connect(self._on_refresh_done)
-            self._worker.start()
+            self._start_refresh(
+                [profile],
+                "manual",
+                f"Refreshing {profile.get('name')}…",
+            )
             return
         if key == "desktop_login":
             self._begin_desktop_login_capture(profile)

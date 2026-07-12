@@ -43,7 +43,6 @@ class RefreshWorker(QThread):
                 self.progress.emit(guard_message)
             self.progress.emit(f"{'Refreshed' if ok else 'Could not refresh'} {name}"
                                + ("" if ok else f": {result.get('error')}"))
-        data.save_profiles(self._profiles)
         self.finished_all.emit()
 
 
@@ -63,4 +62,3 @@ class ActionWorker(QThread):
         except Exception as error:
             ok, message = False, str(error)
         self.done.emit(bool(ok), str(message))
-

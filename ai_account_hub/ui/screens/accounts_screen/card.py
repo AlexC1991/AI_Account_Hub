@@ -150,14 +150,19 @@ class AccountCard(QFrame):
                 f"color:{severity_color(self._tokens, left)};font-size:11px;font-weight:700;"
             )
         countdown = L.ready_countdown(self.profile)
-        base = {"login": "Login required", "error": "Refresh error", "not_ready": "Not ready"}.get(state, L.status_label(state))
+        base = {
+            "login": "Login required",
+            "error": "Refresh error",
+            "not_ready": "Not ready",
+            "checking": "Verifying Codex reset",
+        }.get(state, L.status_label(state))
         self.cooldown.setText(base + (f" · ready in {countdown}" if countdown else ""))
-        cooldown_color = self._tokens["warn"] if state == "login" else self._tokens["danger"]
+        cooldown_color = self._tokens["warn"] if state in {"login", "checking"} else self._tokens["danger"]
         self.cooldown.setStyleSheet(
             f"background:{_soft(cooldown_color)};color:{cooldown_color};"
             "border-radius:7px;padding:6px 9px;font-size:11px;"
         )
-        self.cooldown.setVisible(state in {"not_ready", "login", "error"})
+        self.cooldown.setVisible(state in {"not_ready", "login", "error", "checking"})
         # If the provider CLI doesn't expose usage %, show an honest note in
         # place of the (empty) bars and point to the web dashboard.
         weekly_left = data.percent_left(self.profile.get("weeklyLimitUsedPercent"))
@@ -188,5 +193,3 @@ class AccountCard(QFrame):
 def _soft(hexcolor: str, alpha: float = 0.16) -> str:
     from ai_account_hub.ui.tokens import rgba
     return rgba(hexcolor, alpha)
-
-

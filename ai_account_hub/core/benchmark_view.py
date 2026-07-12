@@ -224,6 +224,13 @@ def build_benchmark_view(
         # composition): fall back to the best available non-cache estimate.
         if int(group.get("workTokens") or 0) <= 0:
             group["workTokens"] = max(0, int(group["totalTokens"]) - int(group["cachedInputTokens"]))
+        # Fold reasoning into output for a fair cross-provider composition:
+        # Codex reports reasoning_output_tokens separately, but Anthropic bundles
+        # thinking into output_tokens and never itemises it. Left split, Claude
+        # shows a 0 "reasoning" slice against Codex's ~35%, which misreads as
+        # "Claude doesn't reason". Total and workTokens are unchanged.
+        group["outputTokens"] = int(group.get("outputTokens") or 0) + int(group.get("reasoningTokens") or 0)
+        group["reasoningTokens"] = 0
         group["ttftDistribution"] = _box_stats(group.pop("ttftMs"))
         group["taskTokenDistribution"] = _box_stats(group.pop("taskTokens"))
         group["durationDistribution"] = _box_stats(group.pop("taskDurationsMs"))

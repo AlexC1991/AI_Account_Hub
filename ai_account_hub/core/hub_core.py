@@ -143,6 +143,8 @@ PROFILE_DEFAULTS = {
     "lastRateLimitGuardUtc": "",
     "lastRateLimitGuardReason": "",
     "codexRolloverCandidates": {},
+    "codexLimitVerificationState": "",
+    "codexRolloverPollDueUtc": "",
     "accountName": "",
     "accountEmail": "",
     "accountType": "",
@@ -253,75 +255,6 @@ def compact_number(value: int | float | None) -> str:
     if number >= 1_000:
         return f"{sign}{number / 1_000:.0f}K"
     return f"{sign}{int(number)}"
-
-
-def native_token_usage_label(usage: object) -> str:
-    if not isinstance(usage, dict):
-        return "-"
-
-    def find_total(value: object) -> int | None:
-        if not isinstance(value, dict):
-            return None
-        for key in ("totalTokens", "total_tokens"):
-            number = sanitize_float(value.get(key))
-            if number is not None:
-                return int(number)
-        for key in ("total", "last"):
-            nested = find_total(value.get(key))
-            if nested is not None:
-                return nested
-        input_tokens = sanitize_float(value.get("inputTokens") or value.get("input_tokens"))
-        output_tokens = sanitize_float(value.get("outputTokens") or value.get("output_tokens"))
-        if input_tokens is not None or output_tokens is not None:
-            return int((input_tokens or 0) + (output_tokens or 0))
-        return None
-
-    total = find_total(usage)
-    return compact_number(total) if total is not None else "-"
-
-
-def format_codex_plan_update(plan: object, explanation: object = "") -> str:
-    lines: list[str] = []
-    if str(explanation or "").strip():
-        lines.append(str(explanation).strip())
-    entries = plan if isinstance(plan, list) else []
-    status_labels = {
-        "completed": "done",
-        "complete": "done",
-        "inProgress": "active",
-        "in_progress": "active",
-        "pending": "todo",
-    }
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        step = str(entry.get("step") or entry.get("text") or "").strip()
-        if not step:
-            continue
-        status = status_labels.get(str(entry.get("status") or "pending"), str(entry.get("status") or "todo"))
-        lines.append(f"[{status}] {step}")
-    if not lines and isinstance(plan, dict):
-        for key, value in plan.items():
-            lines.append(f"{key}: {value}")
-    if not lines and str(plan or "").strip():
-        lines.append(str(plan).strip())
-    return "Plan\n" + "\n".join(lines) if lines else ""
-
-
-def format_minutes(minutes: int | float | None) -> str:
-    if minutes is None:
-        return "-"
-    try:
-        total = int(round(float(minutes)))
-    except (TypeError, ValueError):
-        return "-"
-    if total <= 0:
-        return "0m"
-    hours = total // 60
-    mins = total % 60
-    if hours:
-        return f"{hours}h {mins:02d}m"
-    return f"{mins}m"
 
 
 def month_days(year: int, month: int) -> list[dt.date]:
@@ -470,14 +403,6 @@ def format_countdown(raw: object) -> str:
     return "<1m"
 
 
-def local_datetime_label(raw: object) -> str:
-    parsed = parse_iso_datetime(raw)
-    if parsed is None:
-        return "-"
-    local = parsed.astimezone()
-    return local.strftime("%Y-%m-%d %H:%M")
-
-
 def profile_id(profile: dict) -> str:
     explicit = str(profile.get("id") or "").strip()
     if explicit:
@@ -610,7 +535,6 @@ def browser_profile_mode(profile: dict) -> str:
     return "isolated"
 
 
-
 def parse_json_object_from_text(text: object) -> dict:
     raw = str(text or "").strip()
     if not raw:
@@ -683,45 +607,6 @@ def clip_text(value: object, max_chars: int) -> str:
     return text[: max(0, max_chars - 3)].rstrip() + "..."
 
 
-def calendar_reset_chip_label(marker: object) -> str:
-    """Short 'Account reset' chip label for a usage-calendar reset marker."""
-    text = str(marker or "").strip()
-    estimated = "estimate" in text.lower()
-    account = re.split(r"\s+weekly\s+reset", text, maxsplit=1, flags=re.IGNORECASE)[0]
-    account = re.sub(r"\b(claude\s+code|antigravity|codex|cursor)\b", "", account, flags=re.IGNORECASE)
-    account = re.sub(r"\baccount\b", "", account, flags=re.IGNORECASE)
-    account = re.sub(r"\s+", " ", account).strip()
-    if not account:
-        lowered = text.lower()
-        account = next(
-            (
-                label
-                for key, label in (
-                    ("claude", "Claude"),
-                    ("codex", "Codex"),
-                    ("cursor", "Cursor"),
-                    ("antigravity", "Antigravity"),
-                )
-                if key in lowered
-            ),
-            "Account",
-        )
-    suffix = "reset estimate" if estimated else "reset"
-    return f"{clip_text(account, 12)} {suffix}"
-
-
-def clip_middle_text(value: object, max_chars: int) -> str:
-    text = re.sub(r"\s+", " ", str(value or "").strip())
-    if max_chars <= 1 or len(text) <= max_chars:
-        return text
-    if max_chars <= 4:
-        return text[:max_chars]
-    available = max_chars - 3
-    left = max(1, available // 2)
-    right = max(1, available - left)
-    return f"{text[:left].rstrip()}...{text[-right:].lstrip()}"
-
-
 def mask_email(value: object) -> str:
     text = str(value or "").strip()
     if "@" not in text:
@@ -735,24 +620,6 @@ def mask_email(value: object) -> str:
     domain_tail = "." + domain_parts[-1] if len(domain_parts) > 1 else ""
     domain_mask = (domain_head[:2] + "..." if len(domain_head) > 3 else domain_head[:1] + "...") + domain_tail
     return f"{local_mask}@{domain_mask}"
-
-
-def account_identity_label(profile: dict) -> str:
-    email = str(profile.get("accountEmail") or "").strip()
-    name = str(profile.get("accountName") or "").strip()
-    if email and name and email.lower() not in name.lower():
-        return f"{name} / {email}"
-    return email or name or "-"
-
-
-def masked_account_identity_label(profile: dict) -> str:
-    email = str(profile.get("accountEmail") or "").strip()
-    name = str(profile.get("accountName") or "").strip()
-    if email:
-        return mask_email(email)
-    if name:
-        return clip_text(name, 28)
-    return "-"
 
 
 def account_plan_label(profile: dict) -> str:
@@ -827,7 +694,7 @@ def status_colors(state: str) -> tuple[str, str]:
         return GREEN, GREEN_SOFT
     if state in {"not_ready", "error"}:
         return RED, RED_SOFT
-    if state == "login":
+    if state in {"login", "checking"}:
         return AMBER, AMBER_SOFT
     return BLUE, BLUE_SOFT
 
@@ -838,6 +705,7 @@ def status_label(state: str) -> str:
         "not_ready": "Not Ready",
         "error": "Error",
         "login": "Login",
+        "checking": "Checking",
         "idle": "Idle",
     }.get(state, state.title())
 
@@ -917,6 +785,8 @@ def effective_state(profile: dict) -> str:
         return "login"
     if cooldown_remaining(profile).total_seconds() > 0:
         return "not_ready"
+    if str(profile.get("codexLimitVerificationState") or "") == "pending":
+        return "checking"
     if codex_limit_blocked(profile):
         return "not_ready"
     return "ready"
@@ -1289,17 +1159,101 @@ _CODEX_LIMIT_SNAPSHOT_FIELDS = (
     "weeklyResetEstimateUtc",
     "weeklyResetEstimateSource",
 )
-_CODEX_PROVIDER_RESET_CONFIRM_SECONDS = 8 * 60
+_CODEX_ROLLOVER_POLL_SECONDS = 2 * 60
+_CODEX_ROLLOVER_CONFIRM_SECONDS = 8 * 60
+_CODEX_ROLLOVER_MAX_HOLD_SECONDS = 20 * 60
+_CODEX_ROLLOVER_MIN_OBSERVATION_SECONDS = 60
+_CODEX_ROLLOVER_STABLE_RESET_SECONDS = 45
+_CODEX_ROLLOVER_ROLLING_RESET_SECONDS = 75
+
+
+def _clear_codex_rollover_verification(profile: dict) -> None:
+    candidates = profile.get("codexRolloverCandidates")
+    if isinstance(candidates, dict):
+        candidates.clear()
+    else:
+        profile["codexRolloverCandidates"] = {}
+    profile["codexLimitVerificationState"] = ""
+    profile["codexRolloverPollDueUtc"] = ""
+
+
+def _codex_clean_diagnostics(result: dict) -> bool:
+    diagnostics = result.get("rateLimitDiagnostics")
+    if not isinstance(diagnostics, dict):
+        return False
+    return (
+        int(sanitize_float(diagnostics.get("sampleCount")) or 0) >= 3
+        and int(sanitize_float(diagnostics.get("usableSamples")) or 0) >= 3
+        and int(sanitize_float(diagnostics.get("blockedSamples")) or 0) == 0
+        and not bool(diagnostics.get("selectedBlocked"))
+        and not bool(diagnostics.get("disagreement"))
+    )
+
+
+def _codex_window_signature(window_name: str, incoming_window: object) -> str:
+    if not isinstance(incoming_window, dict):
+        return f"{window_name}:missing"
+    duration = sanitize_float(incoming_window.get("windowDurationMins"))
+    if duration is not None:
+        return f"{window_name}:duration:{int(duration)}"
+    label = str(incoming_window.get("label") or window_name).strip().lower()
+    return f"{window_name}:label:{label}"
+
+
+def _codex_phantom_short_window(profile: dict, rate_limits: dict) -> bool:
+    """Recognize short-window data created by the old weekly fallback bug."""
+    if rate_limits.get("shortWindow") is not None or not isinstance(rate_limits.get("weeklyWindow"), dict):
+        return False
+    short_label = str(profile.get("shortLimitLabel") or "").strip().lower()
+    same_usage = str(profile.get("shortLimitUsedPercent") or "") == str(
+        profile.get("weeklyLimitUsedPercent") or ""
+    )
+    same_reset = str(profile.get("shortLimitResetUtc") or "") == str(
+        profile.get("weeklyLimitResetUtc") or ""
+    )
+    return short_label == "weekly" or (same_usage and same_reset)
+
+
+def codex_rollover_poll_due(profile: dict, now: dt.datetime | None = None) -> bool:
+    """Return whether a pending Codex rollover needs its targeted follow-up read."""
+    if provider_key(profile) != "codex":
+        return False
+    if str(profile.get("codexLimitVerificationState") or "") != "pending":
+        return False
+    due = parse_iso_datetime(profile.get("codexRolloverPollDueUtc"))
+    if due is None:
+        return True
+    current = now or dt.datetime.now(dt.timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=dt.timezone.utc)
+    return due <= current.astimezone(dt.timezone.utc)
+
+
+def defer_codex_rollover_poll(profile: dict, now: dt.datetime | None = None) -> None:
+    """Back off a failed pending verification so the UI timer cannot hot-loop."""
+    if str(profile.get("codexLimitVerificationState") or "") != "pending":
+        return
+    current = now or dt.datetime.now(dt.timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=dt.timezone.utc)
+    due = current.astimezone(dt.timezone.utc) + dt.timedelta(seconds=_CODEX_ROLLOVER_POLL_SECONDS)
+    profile["codexRolloverPollDueUtc"] = due.isoformat()
+    candidates = profile.get("codexRolloverCandidates")
+    if isinstance(candidates, dict):
+        for candidate in candidates.values():
+            if isinstance(candidate, dict):
+                candidate["nextPollUtc"] = due.isoformat()
 
 
 def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.datetime]:
     """Return exhausted windows whose apparent early rollover needs confirmation.
 
-    Codex app-server can briefly return a newly initialized 0%-used window while
-    the real window is still active. Non-exhausted usage may legitimately fall
-    after a provider-side account reset and is accepted immediately. An exhausted
-    window is held only until the same replacement reset survives a later refresh;
-    explicit reset-credit results bypass this guard entirely.
+    Codex app-server can return a newly initialized 0%-used window whose reset is
+    recalculated as ``now + duration`` every time a process starts. A real active
+    window instead develops a stable absolute reset anchor (and may accumulate
+    usage). Persist observations across refresh processes so those shapes can be
+    distinguished, while bounding the hold so a stale exhausted state cannot live
+    forever. Explicit reset-credit results bypass verification entirely.
     """
     candidates = profile.get("codexRolloverCandidates")
     if not isinstance(candidates, dict):
@@ -1309,7 +1263,7 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
     if provider_key(profile) != "codex":
         return {}
     if str(result.get("resetOutcome") or "") == "reset":
-        candidates.clear()
+        _clear_codex_rollover_verification(profile)
         return {}
     rate_limits = (
         result.get("rateLimits")
@@ -1317,21 +1271,23 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
         else {}
     )
     if str(rate_limits.get("rateLimitReachedType") or "").strip():
-        candidates.clear()
+        _clear_codex_rollover_verification(profile)
         return {}
 
-    now = dt.datetime.now(dt.timezone.utc)
+    now = parse_iso_datetime(result.get("refreshedAtIso")) or dt.datetime.now(dt.timezone.utc)
+    clean_observation = _codex_clean_diagnostics(result)
     guarded: dict[str, dt.datetime] = {}
     for window_name, used_key, reset_key, incoming_key in (
         ("short", "shortLimitUsedPercent", "shortLimitResetUtc", "shortWindow"),
         ("weekly", "weeklyLimitUsedPercent", "weeklyLimitResetUtc", "weeklyWindow"),
     ):
         reset = parse_iso_datetime(profile.get(reset_key))
-        if reset is None or reset <= now:
+        incoming_window = rate_limits.get(incoming_key)
+        phantom_short = window_name == "short" and _codex_phantom_short_window(profile, rate_limits)
+        if reset is None or reset <= now or phantom_short:
             candidates.pop(window_name, None)
             continue
         previous_used = sanitize_float(profile.get(used_key))
-        incoming_window = rate_limits.get(incoming_key)
         incoming_used = (
             sanitize_float(incoming_window.get("usedPercent"))
             if isinstance(incoming_window, dict)
@@ -1346,34 +1302,90 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
             if isinstance(incoming_window, dict)
             else None
         )
+        incoming_reset_dt = parse_iso_datetime(incoming_reset)
+        signature = _codex_window_signature(window_name, incoming_window)
         candidate = candidates.get(window_name)
-        same_candidate = (
-            isinstance(candidate, dict)
-            and str(candidate.get("resetUtc") or "") == incoming_reset
-        )
-        first_seen = (
-            parse_iso_datetime(candidate.get("firstSeenUtc"))
-            if same_candidate
-            else None
-        )
+        if not isinstance(candidate, dict) or candidate.get("windowSignature") != signature:
+            candidate = {
+                "status": "pending",
+                "firstSeenUtc": now.isoformat(),
+                "lastSeenUtc": now.isoformat(),
+                "lastObservationUtc": now.isoformat(),
+                "firstResetUtc": incoming_reset,
+                "latestResetUtc": incoming_reset,
+                "observations": 1,
+                "cleanStreak": 1 if clean_observation else 0,
+                "stableResetObservations": 0,
+                "rollingResetObservations": 0,
+                "usageAdvanced": False,
+                "usedPercent": incoming_used,
+                "windowSignature": signature,
+            }
+        else:
+            last_observation = parse_iso_datetime(candidate.get("lastObservationUtc"))
+            gap = (now - last_observation).total_seconds() if last_observation else None
+            candidate["lastSeenUtc"] = now.isoformat()
+            if gap is None or gap >= _CODEX_ROLLOVER_MIN_OBSERVATION_SECONDS:
+                previous_reset = parse_iso_datetime(candidate.get("latestResetUtc"))
+                if previous_reset is not None and incoming_reset_dt is not None:
+                    reset_shift = abs((incoming_reset_dt - previous_reset).total_seconds())
+                    if reset_shift <= _CODEX_ROLLOVER_STABLE_RESET_SECONDS:
+                        candidate["stableResetObservations"] = int(candidate.get("stableResetObservations") or 0) + 1
+                    elif gap is not None and abs(reset_shift - gap) <= _CODEX_ROLLOVER_ROLLING_RESET_SECONDS:
+                        candidate["rollingResetObservations"] = int(candidate.get("rollingResetObservations") or 0) + 1
+                previous_usage = sanitize_float(candidate.get("usedPercent"))
+                if previous_usage is not None and incoming_used is not None and incoming_used > previous_usage + 0.5:
+                    candidate["usageAdvanced"] = True
+                candidate["observations"] = int(candidate.get("observations") or 1) + 1
+                candidate["cleanStreak"] = (
+                    int(candidate.get("cleanStreak") or 0) + 1 if clean_observation else 0
+                )
+                candidate["lastObservationUtc"] = now.isoformat()
+                candidate["latestResetUtc"] = incoming_reset
+                candidate["usedPercent"] = incoming_used
+
+        first_seen = parse_iso_datetime(candidate.get("firstSeenUtc")) or now
+        age = max(0.0, (now - first_seen).total_seconds())
+        observations = int(candidate.get("observations") or 1)
+        clean_streak = int(candidate.get("cleanStreak") or 0)
+        stable_resets = int(candidate.get("stableResetObservations") or 0)
         confirmed = (
-            first_seen is not None
-            and (now - first_seen).total_seconds()
-            >= _CODEX_PROVIDER_RESET_CONFIRM_SECONDS
+            age >= 2 * 60
+            and observations >= 2
+            and clean_streak >= 2
+            and stable_resets >= 1
+            and bool(candidate.get("usageAdvanced"))
+        ) or (
+            age >= _CODEX_ROLLOVER_CONFIRM_SECONDS
+            and observations >= 3
+            and clean_streak >= 3
+            and stable_resets >= 2
+        ) or (
+            age >= _CODEX_ROLLOVER_MAX_HOLD_SECONDS
+            and observations >= 5
+            and clean_streak >= 3
         )
         if confirmed:
             candidates.pop(window_name, None)
             continue
 
-        candidates[window_name] = {
-            "firstSeenUtc": (
-                first_seen.isoformat() if first_seen is not None else now.isoformat()
-            ),
-            "lastSeenUtc": now.isoformat(),
-            "resetUtc": incoming_reset,
-            "usedPercent": incoming_used,
-        }
+        candidate["nextPollUtc"] = (now + dt.timedelta(seconds=_CODEX_ROLLOVER_POLL_SECONDS)).isoformat()
+        candidate["maxHoldUtc"] = (first_seen + dt.timedelta(seconds=_CODEX_ROLLOVER_MAX_HOLD_SECONDS)).isoformat()
+        candidates[window_name] = candidate
         guarded[window_name] = reset
+
+    if guarded:
+        profile["codexLimitVerificationState"] = "pending"
+        due_values = [
+            parse_iso_datetime(item.get("nextPollUtc"))
+            for item in candidates.values()
+            if isinstance(item, dict)
+        ]
+        due_values = [value for value in due_values if value is not None]
+        profile["codexRolloverPollDueUtc"] = min(due_values).isoformat() if due_values else now.isoformat()
+    else:
+        profile["codexLimitVerificationState"] = ""
+        profile["codexRolloverPollDueUtc"] = ""
     return guarded
 
 
@@ -1385,6 +1397,7 @@ def set_profile_limits_from_result(profile: dict, result: dict) -> None:
             mark_auth_error(profile, message)
         else:
             profile["lastLimitsError"] = message
+        defer_codex_rollover_poll(profile)
         return
 
     profile["lastLimitsError"] = ""
@@ -1422,12 +1435,20 @@ def set_profile_limits_from_result(profile: dict, result: dict) -> None:
         profile["shortLimitLabel"] = str(short_window.get("label") or "5h")
         profile["shortLimitUsedPercent"] = "" if short_window.get("usedPercent") is None else str(short_window.get("usedPercent"))
         profile["shortLimitResetUtc"] = iso_from_value(short_window.get("resetsAtIso"))
+    elif "shortWindow" in rate_limits and "short" not in guarded_windows:
+        profile["shortLimitLabel"] = "5h"
+        profile["shortLimitUsedPercent"] = ""
+        profile["shortLimitResetUtc"] = ""
 
     weekly_window = rate_limits.get("weeklyWindow")
     if isinstance(weekly_window, dict):
         profile["weeklyLimitLabel"] = str(weekly_window.get("label") or "Weekly")
         profile["weeklyLimitUsedPercent"] = "" if weekly_window.get("usedPercent") is None else str(weekly_window.get("usedPercent"))
         profile["weeklyLimitResetUtc"] = iso_from_value(weekly_window.get("resetsAtIso"))
+    elif "weeklyWindow" in rate_limits and "weekly" not in guarded_windows:
+        profile["weeklyLimitLabel"] = "Weekly"
+        profile["weeklyLimitUsedPercent"] = ""
+        profile["weeklyLimitResetUtc"] = ""
 
     usage = result.get("usage") or {}
     profile["usageSummary"] = usage.get("summary") if isinstance(usage.get("summary"), dict) else {}

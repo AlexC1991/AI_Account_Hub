@@ -15,7 +15,7 @@ from . import hub_core
 # still exposes the full public API regardless of which module a function lives
 # in now.
 from . import (
-    history_db, browser, locators, claude_status, model_analytics,
+    formatters, history_db, browser, locators, claude_status, model_analytics,
     benchmark_analytics, storage,
 )
 
@@ -27,8 +27,8 @@ mod = hub_core
 # Mirror every public attribute so ``core.NAME`` works for anything, without
 # maintaining an allow-list. ``core.hub_core.NAME`` / ``core.mod.NAME`` too.
 for _src in (
-    hub_core, history_db, browser, locators, claude_status, model_analytics,
-    benchmark_analytics, storage,
+    hub_core, formatters, history_db, browser, locators, claude_status,
+    model_analytics, benchmark_analytics, storage,
 ):
     for _name in dir(_src):
         if not _name.startswith("__"):

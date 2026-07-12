@@ -33,6 +33,7 @@ PUBLIC_SCREENSHOTS = (
 datas = [
     (str(ROOT / "ai_account_hub" / "assets"), "ai_account_hub/assets"),
     (str(ROOT / "scripts" / "codex-account-limits-helper.mjs"), "scripts"),
+    (str(ROOT / "scripts" / "codex-rate-limit-normalizer.mjs"), "scripts"),
     (str(ROOT / "README.md"), "."),
     (str(ROOT / "RELEASE_NOTES.md"), "."),
     (str(ROOT / "LICENSE"), "."),

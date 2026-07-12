@@ -354,7 +354,7 @@ def _in_use_set(value: str | set[str] | None) -> set[str]:
 def rank_profiles(profiles: list[dict], in_use_id: str | set[str] = "") -> list[dict]:
     """Rank usable accounts first, then choose the healthiest remaining quota."""
 
-    state_rank = {"ready": 4, "idle": 3, "not_ready": 2, "login": 1, "error": 0}
+    state_rank = {"ready": 5, "idle": 4, "checking": 3, "not_ready": 2, "login": 1, "error": 0}
     in_use_ids = _in_use_set(in_use_id)
     ordered = sorted(
         (profile for profile in profiles if isinstance(profile, dict)),

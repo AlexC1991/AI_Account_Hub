@@ -225,7 +225,7 @@ class AccountNotificationMonitor:
         if self._did_reset(before.weekly_left, now.weekly_left, threshold):
             reset_parts.append(f"weekly usage is back to {now.weekly_left:.0f}% left")
             reset_values.append(float(now.weekly_left))
-        became_ready = before.state == "not_ready" and now.state == "ready"
+        became_ready = before.state in {"not_ready", "checking"} and now.state == "ready"
         if self._settings["notificationReadyEnabled"] and (reset_parts or became_ready):
             if reset_parts:
                 message = f"{'; '.join(reset_parts)}."

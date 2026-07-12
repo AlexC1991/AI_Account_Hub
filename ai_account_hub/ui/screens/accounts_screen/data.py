@@ -317,7 +317,7 @@ class _DataMixin:
             if mode == "Provider":
                 return data.provider_key(p)
             if mode == "State":
-                return {"not_ready": 0, "error": 1, "login": 2, "ready": 3, "idle": 4}.get(data.account_state(p), 5)
+                return {"not_ready": 0, "checking": 1, "error": 2, "login": 3, "ready": 4, "idle": 5}.get(data.account_state(p), 6)
             if mode == "Last refresh":
                 parsed = L.parse_iso_datetime(p.get("lastLimitsRefreshUtc"))
                 return parsed.timestamp() if parsed else 0
@@ -371,8 +371,15 @@ class _DataMixin:
         visible = self._visible_profiles()
         total = len(visible)
         ready = sum(1 for p in visible if data.account_state(p) == "ready")
+        checking = sum(1 for p in visible if data.account_state(p) == "checking")
         self.ready_pill.setText(f"{ready}/{total} ready")
-        self.summary_sub.setText(f"{ready} ready · {total - ready} not ready")
+        unavailable = total - ready - checking
+        parts = [f"{ready} ready"]
+        if checking:
+            parts.append(f"{checking} checking")
+        if unavailable:
+            parts.append(f"{unavailable} unavailable")
+        self.summary_sub.setText(" · ".join(parts))
         self.summary_bar.set_percent_left(100.0 * ready / total if total else None)
 
     def select(self, pid: str) -> None:
@@ -407,13 +414,20 @@ class _DataMixin:
             self.detail_sub.setText("Pooled dashboard stats")
             total = len(visible)
             ready = sum(1 for item in visible if data.account_state(item) == "ready")
+            checking = sum(1 for item in visible if data.account_state(item) == "checking")
             self.detail_pill.setText(f"{ready}/{total} ready")
             self.detail_pill.set_kind("ready" if ready == total and total else "warn")
             history = L.history_usage_entries(visible)
             total_tokens = sum(int(entry.get("tokens") or 0) for entry in history)
             total_minutes = sum(int(entry.get("minutes") or 0) for entry in history if entry.get("minutes") is not None)
             self.kv_rows["Account"].setText(f"{total} profiles")
-            self.kv_rows["Plan"].setText(f"{ready} ready · {total - ready} unavailable")
+            availability = f"{ready} ready"
+            if checking:
+                availability += f" · {checking} checking"
+            unavailable = total - ready - checking
+            if unavailable:
+                availability += f" · {unavailable} unavailable"
+            self.kv_rows["Plan"].setText(availability)
             self.kv_rows["Capability"].setText(f"{data.compact_number(total_tokens)} pooled")
             self.kv_rows["Desktop"].setText("—")
             self.kv_rows["Desktop"].setToolTip("")
@@ -557,4 +571,3 @@ class _DataMixin:
     def _reset_available(self, profile: dict) -> bool:
         raw = str(profile.get("resetCreditsAvailable") or "").strip()
         return raw.isdigit() and int(raw) > 0
-

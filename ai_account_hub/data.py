@@ -105,7 +105,7 @@ def percent_left(used_percent: object) -> float | None:
 def account_state(profile: dict) -> str:
     if demo_data.DEMO:
         return str(profile.get("state") or "ready")
-    # Reuse the real, tested state machine (ready/not_ready/error/login/idle).
+    # Reuse the real, tested state machine, including Codex rollover checking.
     return L.effective_state(profile)
 
 
@@ -113,8 +113,8 @@ def claude_desktop_only(profile: dict) -> bool:
     return L.claude_desktop_only(profile)
 
 
-STATE_PILL = {"ready": "ready", "not_ready": "error", "error": "error", "login": "warn", "idle": "idle"}
-STATE_LABEL = {"ready": "Ready", "not_ready": "Not ready", "error": "Error", "login": "Login", "idle": "Idle"}
+STATE_PILL = {"ready": "ready", "not_ready": "error", "error": "error", "login": "warn", "checking": "warn", "idle": "idle"}
+STATE_LABEL = {"ready": "Ready", "not_ready": "Not ready", "error": "Error", "login": "Login", "checking": "Checking", "idle": "Idle"}
 
 
 def load_profiles() -> list[dict]:
@@ -197,6 +197,7 @@ def refresh_one(profile: dict, reason: str = "manual") -> dict:
     except Exception as error:  # mirror the legacy per-account error handling
         profile["lastLimitsRefreshUtc"] = L.iso_utc_now()
         profile["lastLimitsError"] = str(error)
+        L.defer_codex_rollover_poll(profile)
         result = {"ok": False, "error": str(error)}
     engine().record_history(profile, reason)
     return result

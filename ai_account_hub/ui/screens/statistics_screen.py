@@ -56,7 +56,10 @@ from ai_account_hub.ui.screens.statistics_charts import (
     _inline_copy,
     _label,
 )
-from ai_account_hub.ui.screens.statistics_community import StatisticsCommunityMixin
+from ai_account_hub.ui.screens.statistics_community import (
+    CommunityResultsWorker,
+    StatisticsCommunityMixin,
+)
 from ai_account_hub.ui.screens.statistics_compare import StatisticsCompareMixin
 
 
