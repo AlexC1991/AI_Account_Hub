@@ -21,10 +21,10 @@ from PySide6.QtWidgets import (
 
 from ai_account_hub import data, demo_data
 from ai_account_hub.core import hub_core
-from ai_account_hub.core.benchmark_analytics import (
+from ai_account_hub.core.benchmark_analytics import build_benchmark_analytics
+from ai_account_hub.core.benchmark_view import (
     aggregate_base_model_groups,
     base_model_key,
-    build_benchmark_analytics,
     build_benchmark_view,
     build_head_to_head,
     productivity_density_csv,
@@ -96,7 +96,7 @@ TOKEN_SEGMENTS = (
     ("unclassifiedTokens", "Unclassified", "#84909a"),
 )
 LINE_CHART_VIEWS = (
-    ("Token activity", "Model activity over time", "Tokens by model and effort", "line", "totalTokens", ()),
+    ("Work tokens", "Work tokens over time", "Non-cache tokens (excludes cache re-reads)", "line", "workTokens", ()),
     ("Completed tasks", "Completed tasks over time", "Completed work recorded for each model", "line", "completedTasks", ()),
     ("5h limit burn", "5h limit burn over time", "Measured movement from trustworthy intervals", "line", "shortBurn", ()),
     ("Weekly limit burn", "Weekly limit burn over time", "Positive movement with reset decreases excluded", "line", "weeklyBurn", ()),
@@ -108,7 +108,7 @@ LINE_CHART_VIEWS = (
 )
 BAR_CHART_VIEWS = (
     ("Completed work", "Completed work", "Task completions by used model", "bar", "completedTasks", ()),
-    ("Tokens by model", "Tokens by model", "Canonical exposed token totals", "bar", "totalTokens", ()),
+    ("Work tokens by model", "Work tokens by model", "Non-cache tokens; cache re-reads excluded", "bar", "workTokens", ()),
     ("5h limit burn", "5h limit burn by model", "Measured percentage-point movement", "bar", "shortBurn", ()),
     ("Weekly limit burn", "Weekly limit burn by model", "Reset decreases and long gaps excluded", "bar", "weeklyBurn", ()),
     ("Token category mix", "Token category mix", "Input, cache, reasoning, output and unclassified", "stack", "totalTokens", ()),
@@ -154,7 +154,7 @@ COMPARE_LINE_VIEWS = tuple(
     }
 )
 COMPARE_BAR_VIEWS = (
-    ("Token totals", "Token totals by model", "Observed totals from zero; differences use the baseline", "comparison_bar", "totalTokens", ()),
+    ("Work tokens", "Work tokens by model", "Non-cache totals from zero; differences use the baseline", "comparison_bar", "workTokens", ()),
     ("Completed tasks", "Completed tasks by model", "Completed work totals from zero", "comparison_bar", "completedTasks", ()),
     ("Edits", "Edits by model", "Observed edit totals from zero", "comparison_bar", "edits", ()),
     ("Files", "Changed files by model", "Unique changed-file totals from zero", "comparison_bar", "filesChanged", ()),

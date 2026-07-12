@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # Python 3.10 uses the tomli backport.
 
 
 MAX_HISTORY_DAYS = 365
-_SKIP_MODELS = {"", "synthetic", "unknown", "unknown model"}
+_SKIP_MODELS = {"", "synthetic", "<synthetic>", "unknown", "unknown model"}
 CODEX_ACCOUNT_TOTAL_MODEL = "codex-account-total"
 _EFFORT_ALIASES = {
     "extra-high": "xhigh",
