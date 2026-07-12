@@ -10,6 +10,7 @@ PUBLIC_DOCS = (
     "ARCHITECTURE.md",
     "CLAUDE_ACCOUNT_SETUP.md",
     "CODEX_ACCOUNT_SETUP.md",
+    "COMMUNITY_TELEMETRY_SECURITY_PLAN.md",
     "CURSOR_ACCOUNT_SETUP.md",
     "PORTING_MACOS_LINUX.md",
     "PROVIDER_DISCOVERY.md",
@@ -17,10 +18,12 @@ PUBLIC_DOCS = (
 )
 PUBLIC_SCREENSHOTS = (
     "README.md",
+    "community-sharing.png",
     "dashboard.png",
     "day-detail.png",
     "signal-rail.png",
     "statistics-compare.png",
+    "statistics-community.png",
     "statistics-models.png",
     "statistics-overview.png",
     "statistics-productivity.png",

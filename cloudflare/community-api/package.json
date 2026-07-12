@@ -1,0 +1,16 @@
+{
+  "name": "ai-account-hub-community-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "types": "wrangler types",
+    "typecheck": "wrangler types && tsc --noEmit",
+    "dry-run": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "wrangler": "4.110.0"
+  }
+}

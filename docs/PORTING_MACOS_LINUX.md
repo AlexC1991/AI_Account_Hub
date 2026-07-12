@@ -325,6 +325,24 @@ requires a separate security review. Until then, open the isolated browser and
 ask for one manual login; never claim that provider CLI OAuth is a reusable web
 cookie.
 
+### Community signing identity
+
+Public Community results remain readable on every platform, but opt-in uploads
+currently fail closed outside Windows because
+`ai_account_hub/core/community_identity.py` protects its P-256 private key with
+user-scoped DPAPI. A macOS or Linux port must replace only the secure-storage
+adapter, not the signed protocol:
+
+- macOS: store the PKCS#8 private key in Keychain with access limited to the Hub.
+- Linux: store it in Secret Service/libsecret and report a clear unavailable
+  state when no locked keyring exists.
+- Preserve the SPKI public-key encoding, derived installation ID, canonical
+  request strings, and 64-byte IEEE-P1363 ECDSA signatures.
+- Never fall back to plaintext private-key storage, `profiles.json`, an
+  environment variable, or a bundled shared upload secret.
+- Port tests must cover create/load/delete, changed-user failure, replay
+  rejection, and signed withdrawal before enabling the toggle.
+
 ## Window chrome
 
 The Hub currently uses `Qt.FramelessWindowHint` and its own title bar. Decide per

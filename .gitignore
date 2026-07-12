@@ -82,3 +82,11 @@ test_*.py
 # contain fake account/model data and are not part of the public application.
 /prototypes/
 /docs/PERSONAL_MODEL_ANALYTICS_PLAN.md
+
+# Cloudflare Worker local state and credentials. The public Worker config keeps
+# only non-secret binding names; authentication stays in Wrangler/GitHub.
+/cloudflare/community-api/.dev.vars
+/cloudflare/community-api/.wrangler/
+/cloudflare/community-api/node_modules/
+/cloudflare/community-api/worker-configuration.d.ts
+/cloudflare/community-api/*.cpuprofile

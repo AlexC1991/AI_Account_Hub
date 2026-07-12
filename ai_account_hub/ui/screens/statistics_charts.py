@@ -67,6 +67,9 @@ DISPLAY_METRIC_LABELS = {
     "activeMs": "Active time",
     "tokensPerTask": "Tokens per completed task",
     "tasksPerMillion": "Tasks per 1M tokens",
+    "tasksPerSession": "Tasks per 5h capacity",
+    "weeklyBurnPerTask": "Weekly burn per task",
+    "observations": "Observed tasks",
     "inputTokens": "Input tokens",
     "cachedInputTokens": "Cached input tokens",
     "cacheCreationTokens": "Cache write tokens",
@@ -575,7 +578,7 @@ class BenchmarkChart(QWidget):
         painter.setPen(QColor(self._theme.tokens["text3"]))
         for step in range(5):
             value = maximum * step / 4
-            if "Token" in self._metric or any("Token" in metric for metric in self._segments):
+            if "token" in self._metric.lower() or any("token" in metric.lower() for metric in self._segments):
                 label = _format_tokens(value)
             elif self._metric == "activeMs" or any(metric.startswith("duration") for metric in self._segments):
                 label = _format_duration(value)
@@ -637,7 +640,7 @@ class BenchmarkChart(QWidget):
             self._draw_stack(painter, plot)
         elif self._kind == "box":
             self._draw_box(painter, plot)
-        elif self._kind == "scatter":
+        elif self._kind in {"scatter", "community_scatter"}:
             self._draw_scatter(painter, plot)
         self._draw_scale_badge(painter, plot)
 
@@ -975,6 +978,9 @@ class BenchmarkChart(QWidget):
             )
 
     def _draw_scatter(self, painter: QPainter, plot: QRectF) -> None:
+        if self._kind == "community_scatter":
+            self._draw_community_scatter(painter, plot)
+            return
         points = []
         for group in self._active_groups():
             x = _metric_value(group, "tokensPerTask")
@@ -996,6 +1002,74 @@ class BenchmarkChart(QWidget):
                 "date": "Resource / work", "model": group.get("modelLabel"),
                 "value": y_value, "metricLabel": "Tasks per 1M tokens",
             }))
+
+    def _draw_community_scatter(self, painter: QPainter, plot: QRectF) -> None:
+        """Ranked efficiency map: real metrics remain visible, never one score."""
+
+        points = []
+        for group in self._active_groups():
+            x = _metric_value(group, "tokensPerTask")
+            y = _metric_value(group, "tasksPerSession")
+            if x > 0 and y > 0:
+                points.append((group, x, y))
+        max_x = max([item[1] for item in points] or [1]) * 1.08
+        max_y = self._visible_maximum(max([item[2] for item in points] or [1]) * 1.12)
+        self._draw_y_labels(painter, plot, max_y)
+        tokens = self._theme.tokens
+        for index, (group, x_value, y_value) in enumerate(points):
+            point = QPointF(
+                plot.left() + x_value / max_x * plot.width(),
+                max(plot.top() + 16, plot.bottom() - y_value / max_y * plot.height()),
+            )
+            color = self._group_color(group)
+            painter.setPen(QPen(color, 2))
+            painter.setBrush(QColor(tokens["panel"]))
+            painter.drawEllipse(point, 13, 13)
+            rank = int(group.get("communityRank") or index + 1)
+            painter.setPen(color)
+            painter.drawText(QRectF(point.x() - 12, point.y() - 12, 24, 24), Qt.AlignCenter, str(rank))
+            # At the minimum application width, the leaderboard beside the
+            # chart already carries every name and value. Keeping only ranked
+            # markers here prevents labels from colliding; hover remains full.
+            if self.width() >= 700:
+                label = painter.fontMetrics().elidedText(
+                    str(group.get("modelLabel") or "Model"), Qt.ElideRight, 126
+                )
+                label_rect = QRectF(point.x() + 17, point.y() - 17, 128, 18)
+                if label_rect.right() > plot.right():
+                    label_rect.moveRight(point.x() - 17)
+                painter.setPen(QColor(tokens["text2"]))
+                painter.drawText(label_rect, Qt.AlignVCenter, label)
+                metric_rect = QRectF(label_rect.left(), label_rect.top() + 16, 128, 18)
+                painter.setPen(QColor(tokens["text3"]))
+                painter.drawText(
+                    metric_rect,
+                    Qt.AlignVCenter,
+                    f"{y_value:.1f} tasks / 5h",
+                )
+            self._points.append((point, {
+                "date": "Community result",
+                "model": group.get("modelLabel"),
+                "value": y_value,
+                "metricLabel": "Tasks per 5h capacity",
+                "detailLines": [
+                    f"Tokens per task: {_format_tokens(x_value)}",
+                    f"Weekly burn per task: {_format_points(group.get('weeklyBurnPerTask'))}",
+                    f"Observed tasks: {int(group.get('observations') or 0):,}",
+                    f"Contributors: {int(group.get('contributors') or 0):,}",
+                ],
+            }))
+        painter.setPen(QColor(tokens["text3"]))
+        painter.drawText(
+            QRectF(plot.left(), plot.bottom() + 5, plot.width(), 18),
+            Qt.AlignLeft | Qt.AlignTop,
+            "Lower tokens per task",
+        )
+        painter.drawText(
+            QRectF(plot.left(), plot.bottom() + 5, plot.width(), 18),
+            Qt.AlignRight | Qt.AlignTop,
+            "Higher tokens per task",
+        )
 
     def wheelEvent(self, event) -> None:
         factor = 1.2 if event.angleDelta().y() > 0 else 1 / 1.2

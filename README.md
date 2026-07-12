@@ -59,6 +59,13 @@ day opens the records and resets observed for that date.
 observed reasoning settings. The workspace shows how many variants are visible
 and **Restore comparison** returns to the previous mixed-model roster.
 
+### Community Results
+
+| Community comparisons | Sharing controls |
+|---|---|
+| <img src="screenshots/statistics-community.png" alt="Community model comparison workspace with ranked results and an efficiency map"> | <img src="screenshots/community-sharing.png" alt="Community sharing popover with consent, upload schedule, preview, settings, and withdrawal controls"> |
+| Privacy-thresholded model and reasoning cohorts can be explored as dots, lines, or vertical bars without producing a universal quality score. | Sharing is off by default and remains inspectable and reversible after opt-in. |
+
 ### Background Awareness
 
 | Best Next widget | Signal Rail warning |
@@ -76,7 +83,7 @@ your profiles or usage history.
 - Desktop, CLI, login, status, doctor, refresh, online, and local-profile actions where supported.
 - Codex reset-credit visibility and reset action when OpenAI exposes a credit.
 - Monthly calendar with per-day token totals, account activity, and weekly-reset events.
-- Statistics workspaces for Overview, Models, Productivity, and Compare.
+- Statistics workspaces for Overview, Models, Productivity, Compare, and Community.
 - Independent line-chart and vertical-bar modes with focus, tooltips, PNG export, and CSV export.
 - Same-model reasoning comparisons such as High versus XHigh, plus mixed-model comparisons.
 - Productivity Density facts without collapsing activity into a quality score.
@@ -84,6 +91,7 @@ your profiles or usage history.
 - Signal Rail warnings for low limits, exhausted accounts, and confirmed resets.
 - Runtime discovery for provider applications, CLIs, agents, icons, and optional path overrides.
 - Built-in dark, light, and accent themes.
+- Opt-in signed Community pilot uploads with exact payload preview, daily deduplication, replay protection, receipts, and withdrawal.
 
 ## Quick Start
 
@@ -183,6 +191,42 @@ The UI labels inferred attribution rather than presenting it as exact.
 See [Real-World Usage Analytics](docs/REAL_WORLD_USAGE_ANALYTICS.md) for metric
 definitions, attribution rules, limit-burn safeguards, and the privacy boundary.
 
+### Community Results And Sharing
+
+The fifth Statistics rail section reads privacy-thresholded model aggregates
+through the public Community Worker. It provides ranked model/setting results,
+provider and date filters, and separate Dots, Lines, and Vertical Bars views.
+Rankings use one visible metric at a time; the Hub does not manufacture a
+universal quality score. The current public endpoint is a staging pilot and is
+labelled as such in the interface.
+
+The fixed **Community sharing** control is off by default. Click the control to
+open its compact status panel, preview the next upload, inspect the schedule,
+open full settings, or delete a previous contribution. Enabling sharing shows
+the exact allowlisted daily payload before anything is sent. The Hub creates a
+P-256 installation key protected by Windows DPAPI, signs each request locally,
+and sends it only to the Community Worker. D1 enforces installation
+registration, one accepted submission per UTC day, nonce replay protection,
+and receipts; R2 stores only the anonymous aggregate under a server-generated
+private key.
+
+**Edit > Community sharing** opens the same full status and withdrawal flow.
+Withdrawal deletes the installation's accepted raw submissions and local
+signing identity; turning the switch off merely stops future uploads. Help demo
+mode continues to use the offline `test://local` adapter.
+
+Accepted rows automatically update private D1 contribution and daily rollup
+tables. A model/reasoning cohort and each visible day require at least 10
+distinct installations before they can appear publicly. Until a real cohort
+qualifies, the UI clearly labels the existing charts as a synthetic staging
+preview and shows real collection progress separately. Signed withdrawal
+rebuilds the rollups so deleted contributions disappear from future results.
+
+No Cloudflare credential is packaged, and the desktop rejects direct R2 URLs.
+This remains a staging pilot rather than an expert-approved production
+leaderboard. Its security model and remaining production gates are documented
+in [Community Telemetry And Global Model Comparisons](docs/COMMUNITY_TELEMETRY_SECURITY_PLAN.md).
+
 ## Provider Support
 
 | Provider | Desktop | CLI / agent | Local model analytics |
@@ -262,7 +306,7 @@ command payloads, tool output, raw file paths, email addresses, or account names
 
 ## Platform Support
 
-Version 1.1.0 is Windows-first. Much of the Qt UI and provider discovery layer
+Version 1.1 is Windows-first. Much of the Qt UI and provider discovery layer
 is portable, but process control, packaged-resource paths, state readers, tray
 placement, and browser-session handling need native adapters and testing before
 macOS or Linux can be called supported.
@@ -276,6 +320,7 @@ packaging, tray, notification, discovery, and acceptance-test plan.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Provider discovery](docs/PROVIDER_DISCOVERY.md)
 - [Real-world usage analytics](docs/REAL_WORLD_USAGE_ANALYTICS.md)
+- [Community telemetry security plan](docs/COMMUNITY_TELEMETRY_SECURITY_PLAN.md)
 - [macOS and Linux porting](docs/PORTING_MACOS_LINUX.md)
 
 The Windows executable definition lives in

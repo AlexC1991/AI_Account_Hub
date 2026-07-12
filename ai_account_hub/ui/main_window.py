@@ -25,6 +25,15 @@ from ai_account_hub.ui.account_notifications import (
     AccountNotificationMonitor,
     NotificationSettingsDialog,
 )
+from ai_account_hub.core.community_api import CONSENT_VERSION, CommunityApiError
+from ai_account_hub.ui.community_sharing import (
+    CommunityConsentDialog,
+    CommunityPayloadDialog,
+    CommunitySharingControl,
+    CommunitySharingPopover,
+    CommunityStatusDialog,
+    CommunityUploadWorker,
+)
 
 
 class MainWindow(QWidget):
@@ -51,6 +60,15 @@ class MainWindow(QWidget):
         self._auto_on = bool(self.settings.get("autoRefreshEnabled", True))
         self._auto_minutes = max(1, int(self.settings.get("autoRefreshMinutes", 10) or 10))
         self._next_auto_refresh = dt.datetime.now() + dt.timedelta(minutes=1)
+        self._community_enabled = bool(
+            self.settings.get("communitySharingEnabled", False)
+            and int(self.settings.get("communityConsentVersion", 0) or 0) == CONSENT_VERSION
+            and not data.demo_data.DEMO
+        )
+        self._community_last_receipt = dict(self.settings.get("communityLastReceipt") or {})
+        self._community_retry_after = dt.datetime.min
+        self._community_worker: CommunityUploadWorker | None = None
+        self._community_worker_reason = ""
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -59,6 +77,31 @@ class MainWindow(QWidget):
         self.stack = QStackedWidget()
         self.accounts = AccountsScreen(self.theme)
         self.statistics = StatisticsScreen(self.theme)
+        if bool(self.settings.get("communitySharingEnabled", False)) and (
+            int(self.settings.get("communityConsentVersion", 0) or 0) != CONSENT_VERSION
+            or str(self.settings.get("communityApiMode") or "")
+            != self.statistics.community_api.mode
+        ):
+            # Consent never crosses transport boundaries. In particular, the
+            # old offline test opt-in cannot become a live staging opt-in.
+            self._community_enabled = False
+            self.settings["communitySharingEnabled"] = False
+            self.settings["communityConsentVersion"] = 0
+            data.save_settings(self.settings)
+        if self._community_enabled and not self.statistics.community_api.supports_submissions:
+            # A previous local-test opt-in must not carry over as an apparent
+            # cloud opt-in while signed Worker ingestion remains unavailable.
+            self._community_enabled = False
+            self.settings["communitySharingEnabled"] = False
+            data.save_settings(self.settings)
+        if (
+            self.statistics.community_api.mode != "test"
+            and str(self._community_last_receipt.get("mode") or "") == "test"
+        ):
+            self._community_last_receipt = {}
+            self.settings["communityLastReceipt"] = {}
+            self.settings["communityLastUploadUtc"] = ""
+            data.save_settings(self.settings)
         self.stack.addWidget(self.accounts)    # index 0
         self.stack.addWidget(self.statistics)  # index 1
 
@@ -77,9 +120,13 @@ class MainWindow(QWidget):
         self.theme.changed.connect(lambda _n: self.titlebar.set_accent(self.theme.tokens["accent"]))
         self.theme.changed.connect(lambda _n: self._logo.set_accent(self.theme.tokens["accent"]))
         self.theme.changed.connect(lambda _n: self._sync_tray_theme())
+        self.theme.changed.connect(
+            lambda _n: self._community_popover.set_theme(self.theme.tokens)
+        )
         self.accounts.activity.connect(self._set_status)
         self.statistics.activity.connect(self._set_status)
         self.statistics.history_updated.connect(self.accounts.refresh)
+        self.statistics.history_updated.connect(self._community_history_ready)
         self.accounts.profiles_changed.connect(self._sync_tray_profiles)
         self.accounts.profiles_changed.connect(self.statistics.set_profiles)
         start_section = (
@@ -115,6 +162,8 @@ class MainWindow(QWidget):
         edit_menu.addAction("Edit selected", lambda: self._account_action("edit"))
         edit_menu.addAction("Rename selected", lambda: self._account_action("rename"))
         edit_menu.addAction("Delete selected", lambda: self._account_action("delete"))
+        edit_menu.addSeparator()
+        edit_menu.addAction("Community sharing...", self._open_community_status)
 
         window_menu = bar.addMenu("Window")
         self._menus.append(window_menu)
@@ -441,6 +490,19 @@ class MainWindow(QWidget):
         row.addWidget(self._seg)
         row.addStretch(1)
 
+        self._community_control = CommunitySharingControl(
+            self._community_enabled,
+            test_mode=self.statistics.community_api.mode == "test",
+        )
+        self._community_control.toggle_requested.connect(self._set_community_sharing)
+        self._community_control.details_requested.connect(self._show_community_popover)
+        row.addWidget(self._community_control)
+        self._community_popover = CommunitySharingPopover(self.theme.tokens, self)
+        self._community_popover.toggle_requested.connect(self._set_community_sharing)
+        self._community_popover.preview_requested.connect(self._preview_community_payload)
+        self._community_popover.settings_requested.connect(self._open_community_status)
+        self._community_popover.withdraw_requested.connect(self._withdraw_community)
+
         # Refresh affordance: spinning ring + "Refreshing…" (design §2), shown
         # only while an account refresh is running.
         self._refresh_spin = Spinner(self.theme.tokens["accent"], size=14)
@@ -516,6 +578,245 @@ class MainWindow(QWidget):
     def _set_status(self, text: str) -> None:
         self._status_text = str(text)
 
+    def _community_payload(self) -> tuple[dict | None, str]:
+        try:
+            return self.statistics.community_payload(), ""
+        except CommunityApiError as exc:
+            return None, str(exc)
+
+    def _community_status_snapshot(self) -> dict:
+        status = dict(self._community_last_receipt)
+        status.setdefault("endpoint", self.statistics.community_api.endpoint)
+        status.setdefault("networkRequest", self.statistics.community_api.mode != "test")
+        status.setdefault(
+            "installationId",
+            str(getattr(self.statistics.community_api, "installation_id", "") or ""),
+        )
+        return status
+
+    def _sync_community_popover(self) -> tuple[dict | None, str]:
+        payload, error = self._community_payload()
+        status = self._community_status_snapshot()
+        self._community_popover.set_state(
+            self._community_enabled,
+            status,
+            payload_available=payload is not None,
+            can_withdraw=bool(status.get("installationId")),
+            test_mode=self.statistics.community_api.mode == "test",
+        )
+        return payload, error
+
+    def _show_community_popover(self) -> None:
+        self._sync_community_popover()
+        self._community_popover.show_for(self._community_control)
+
+    def _preview_community_payload(self) -> None:
+        payload, error = self._community_payload()
+        if payload is None:
+            QMessageBox.information(
+                self,
+                "Community sharing",
+                error or "No aggregate model activity is available to preview yet.",
+            )
+            return
+        CommunityPayloadDialog(
+            payload,
+            network_request=self.statistics.community_api.mode != "test",
+            parent=self,
+        ).exec()
+
+    def _set_community_sharing(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        if enabled == self._community_enabled:
+            self._community_control.set_enabled(enabled)
+            self._sync_community_popover()
+            return
+        if enabled:
+            if not self.statistics.community_api.supports_submissions:
+                self._community_control.set_enabled(False)
+                self._sync_community_popover()
+                QMessageBox.information(
+                    self,
+                    "Community sharing",
+                    "Cloudflare staging is currently read-only. Signed installation uploads are not enabled yet.",
+                )
+                return
+            payload, error = self._community_payload()
+            dialog = CommunityConsentDialog(
+                payload,
+                error,
+                test_mode=self.statistics.community_api.mode == "test",
+                parent=self,
+            )
+            if not dialog.exec():
+                self._community_control.set_enabled(False)
+                self._sync_community_popover()
+                return
+            self._community_enabled = True
+            self.settings["communitySharingEnabled"] = True
+            self.settings["communityConsentVersion"] = CONSENT_VERSION
+            self.settings["communityApiMode"] = self.statistics.community_api.mode
+            data.save_settings(self.settings)
+            self._community_control.set_enabled(True)
+            self._sync_community_popover()
+            self._upload_community("enabled")
+            return
+        self._community_enabled = False
+        self.settings["communitySharingEnabled"] = False
+        data.save_settings(self.settings)
+        self._community_control.set_enabled(False)
+        self._sync_community_popover()
+        self._set_status("Community sharing turned off.")
+
+    def _upload_community(self, reason: str = "automatic") -> None:
+        if (
+            not self._community_enabled
+            or data.demo_data.DEMO
+            or self._community_worker is not None
+        ):
+            return
+        payload, error = self._community_payload()
+        if payload is None:
+            self._community_retry_after = dt.datetime.now() + dt.timedelta(hours=1)
+            self._set_status(f"Community upload skipped: {error}")
+            return
+        self._community_worker_reason = reason
+        worker = CommunityUploadWorker(
+            self.statistics.community_api,
+            payload=payload,
+            parent=self,
+        )
+        self._community_worker = worker
+        worker.succeeded.connect(self._community_upload_succeeded)
+        worker.failed.connect(self._community_upload_failed)
+        worker.finished.connect(lambda: self._community_worker_finished(worker))
+        self._set_status("Signing and sending the anonymous community summary...")
+        worker.start()
+
+    def _community_upload_succeeded(self, receipt: dict) -> None:
+        self._community_last_receipt = dict(receipt)
+        self.settings["communityLastUploadUtc"] = str(receipt.get("acceptedAtUtc") or "")
+        self.settings["communityLastReceipt"] = self._community_last_receipt
+        self.settings["communityApiMode"] = self.statistics.community_api.mode
+        data.save_settings(self.settings)
+        self._sync_community_popover()
+        duplicate = " Existing daily receipt reused." if receipt.get("duplicate") else ""
+        publication = str(receipt.get("publicationSource") or "")
+        publication_note = (
+            " Collecting until the public privacy threshold is met."
+            if publication == "real-pending"
+            else " Public aggregates were refreshed."
+            if publication == "real-community"
+            else ""
+        )
+        self._set_status(
+            f"Community summary accepted ({receipt.get('recordCount', 0)} model records)."
+            f"{duplicate}{publication_note}"
+        )
+
+    def _community_upload_failed(self, message: str) -> None:
+        self._community_retry_after = dt.datetime.now() + dt.timedelta(hours=1)
+        self._set_status(f"Community Worker rejected the daily summary: {message}")
+        if self._community_worker_reason == "enabled":
+            QMessageBox.warning(
+                self,
+                "Community sharing",
+                "Sharing remains enabled and will retry later.\n\n" + message,
+            )
+
+    def _community_worker_finished(self, worker: CommunityUploadWorker) -> None:
+        if self._community_worker is worker:
+            self._community_worker = None
+            self._community_worker_reason = ""
+        worker.deleteLater()
+
+    def _open_community_status(self) -> None:
+        payload, _error = self._community_payload()
+        status = self._community_status_snapshot()
+        dialog = CommunityStatusDialog(
+            self._community_enabled,
+            status,
+            payload,
+            self,
+        )
+        dialog.exec()
+        if dialog.withdraw_requested:
+            self._withdraw_community()
+
+    def _withdraw_community(self) -> None:
+        if self._community_worker is not None:
+            QMessageBox.information(
+                self,
+                "Community sharing",
+                "A community request is already in progress. Please try again shortly.",
+            )
+            return
+        answer = QMessageBox.question(
+            self,
+            "Withdraw community data",
+            "Delete this installation's accepted raw Community submissions and local signing identity?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        worker = CommunityUploadWorker(
+            self.statistics.community_api,
+            withdraw=True,
+            parent=self,
+        )
+        self._community_worker = worker
+        self._community_worker_reason = "withdraw"
+        worker.succeeded.connect(self._community_withdraw_succeeded)
+        worker.failed.connect(self._community_withdraw_failed)
+        worker.finished.connect(lambda: self._community_worker_finished(worker))
+        self._set_status("Withdrawing this installation's community data...")
+        worker.start()
+
+    def _community_withdraw_succeeded(self, result: dict) -> None:
+        self._community_enabled = False
+        self._community_last_receipt = {}
+        self.settings["communitySharingEnabled"] = False
+        self.settings["communityLastUploadUtc"] = ""
+        self.settings["communityLastReceipt"] = {}
+        data.save_settings(self.settings)
+        self._community_control.set_enabled(False)
+        self._sync_community_popover()
+        deleted = int(result.get("deletedSubmissions") or 0)
+        self._set_status(f"Community data withdrawn ({deleted} raw submission(s) deleted).")
+        QMessageBox.information(
+            self,
+            "Community sharing",
+            f"Withdrawal completed. {deleted} accepted raw submission(s) were deleted.",
+        )
+
+    def _community_withdraw_failed(self, message: str) -> None:
+        self._set_status(f"Community withdrawal failed: {message}")
+        QMessageBox.warning(self, "Community sharing", "Withdrawal failed.\n\n" + message)
+
+    def _community_upload_due(self) -> bool:
+        if (
+            not self._community_enabled
+            or self._community_worker is not None
+            or dt.datetime.now() < self._community_retry_after
+        ):
+            return False
+        raw = str(self.settings.get("communityLastUploadUtc") or "")
+        try:
+            last_day = dt.datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+        except ValueError:
+            return True
+        return last_day < dt.datetime.now().date()
+
+    def _community_history_ready(self) -> None:
+        """Retry a due summary once local analytics has finished loading."""
+
+        if not self._community_enabled:
+            return
+        self._community_retry_after = dt.datetime.min
+        if self._community_upload_due():
+            self._upload_community("history-ready")
+
     def _tick(self) -> None:
         self.accounts.tick()
         if self._tray_controller is not None:
@@ -523,11 +824,15 @@ class MainWindow(QWidget):
         if self._auto_on and dt.datetime.now() >= self._next_auto_refresh:
             self._next_auto_refresh = dt.datetime.now() + dt.timedelta(minutes=self._auto_minutes)
             self.accounts.refresh_all(reason="auto")
+        if self._community_upload_due():
+            self._upload_community("automatic")
 
     def closeEvent(self, event) -> None:
         self._clock.stop()
         self.accounts.close_workers()
         self.statistics.close_worker()
+        if self._community_worker is not None and self._community_worker.isRunning():
+            self._community_worker.wait(12000)
         if self._tray_controller is not None:
             self._tray_controller.close()
         super().closeEvent(event)

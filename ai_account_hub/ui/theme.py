@@ -107,6 +107,28 @@ def build_qss(t: dict[str, str]) -> str:
     QLabel#appTitle {{ font-size: 15px; font-weight: 600; color: {t['text']}; }}
     QLabel#appSubtitle {{ font-size: 11px; color: {t['text3']}; }}
     QFrame#logoTile {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 10px; }}
+    QFrame#communityShareControl {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 8px; }}
+    QFrame#communityShareControl:hover {{ border-color: {t['borderStrong']}; }}
+    QLabel#communityShareTitle {{ color: {t['text']}; font-size: 10px; font-weight: 700; }}
+    QLabel#communityShareStatus {{ color: {t['text3']}; font-size: 9px; }}
+    QPushButton#communityShareToggle {{ background: {t['panel']}; border: 1px solid {t['borderStrong']};
+        border-radius: 14px; padding: 0; color: {t['text3']}; font-size: 10px; font-weight: 700; }}
+    QPushButton#communityShareToggle:hover {{ border-color: {t['accent']}; color: {t['text']}; }}
+    QPushButton#communityShareToggle[on="true"] {{ background: {success_soft}; border-color: {t['success']}; color: {t['success']}; }}
+    QFrame#communitySharePopover {{ background: {t['panel']}; border: 1px solid {t['borderStrong']}; border-radius: 9px; }}
+    QLabel#communityPopoverIcon {{ color: {t['accent']}; font-size: 15px; font-weight: 700; }}
+    QLabel#communityPopoverTitle {{ color: {t['text']}; font-size: 13px; font-weight: 700; }}
+    QLabel#communityPopoverState {{ background: {t['panel2']}; color: {t['text3']}; border: none;
+        border-radius: 9px; padding: 2px 6px; font-size: 9px; font-weight: 700; }}
+    QLabel#communityPopoverState[on="true"] {{ background: {success_soft}; color: {t['success']}; }}
+    QLabel#communityPopoverSummary {{ color: {t['text2']}; font-size: 10px; }}
+    QFrame#communityPopoverDivider {{ background: {t['border']}; border: none; }}
+    QFrame#communityPopoverSection {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 7px; }}
+    QLabel#communityPopoverSectionTitle {{ color: {t['text']}; font-size: 11px; font-weight: 700; }}
+    QLabel#communityPopoverCaption {{ color: {t['text3']}; font-size: 9px; }}
+    QFrame#communityPopoverMetric {{ background: {t['bg']}; border: 1px solid {t['border']}; border-radius: 7px; }}
+    QLabel#communityPopoverMetricTitle {{ color: {t['text3']}; font-size: 8px; font-weight: 600; }}
+    QLabel#communityPopoverMetricValue {{ color: {t['text']}; font-size: 10px; font-weight: 700; }}
 
     /* segmented top-level screen selector */
     QFrame#segTabs {{ background: {t['panel2']}; border-radius: 8px; }}
@@ -153,12 +175,19 @@ def build_qss(t: dict[str, str]) -> str:
     /* ---- Cards / panels ---- */
     QFrame#card {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 9px; }}
     QFrame#card[selected="true"] {{ background: {accent_soft}; border-color: {t['accent']}; }}
+    QFrame#communityStatusCard {{ background: {accent_soft}; border: 1px solid {soft(t['accent'], 0.45)}; border-radius: 9px; }}
     QFrame#panel {{ background: {t['panel']}; border: 1px solid {t['border']}; border-radius: 10px; }}
     QWidget#trayPopup {{ background: {t['panel']}; border: 1px solid {t['borderStrong']}; border-radius: 9px; }}
     QFrame#trayHeader {{ background: {t['panel']}; border-bottom: 1px solid {t['border']}; }}
     QFrame#trayFooter {{ background: {t['panel']}; border-top: 1px solid {t['border']}; }}
     QDialog#traySettingsDialog {{ background: {t['panel']}; }}
     QDialog#notificationSettingsDialog {{ background: {t['panel']}; }}
+    QDialog#communityDialog {{ background: {t['bg']}; }}
+    QFrame#communitySharedCard {{ background: {t['panel2']}; border: 1px solid {soft(t['success'], 0.45)}; border-radius: 8px; }}
+    QFrame#communityPrivateCard {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 8px; }}
+    QLabel#communityCardTitle {{ color: {t['text']}; font-size: 12px; font-weight: 700; }}
+    QLabel#communityListItem {{ color: {t['text2']}; font-size: 11px; }}
+    QLabel#communityError {{ color: {t['danger']}; font-size: 10px; }}
     QScrollArea#trayVisibilityScroll {{ background: {t['panel2']}; border: 1px solid {t['border']}; border-radius: 7px; }}
     QWidget#trayVisibilityHost {{ background: {t['panel2']}; }}
     QLabel#dialogTitle {{ color: {t['text']}; font-size: 16px; font-weight: 700; }}

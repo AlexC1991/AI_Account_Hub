@@ -70,6 +70,30 @@ wheel** zooms the time axis; dragging pans only after time zoom is active.
 **Reset** restores both axes. Charts also support focus, PNG capture, and
 model-only CSV export.
 
+## Community Results
+
+The Community section is a separate aggregate view, not another local account
+filter. It groups privacy-thresholded contributions by provider, model, and
+reasoning setting and can rank one factual metric at a time. Dots show the
+relationship between two selected measures; Lines show aggregate movement over
+time; Vertical Bars compare absolute cohort values from zero.
+
+Community labels distinguish synthetic staging samples, real collection that
+has not reached publication threshold, and qualifying real cohorts. A cohort
+and each visible day require at least 10 distinct installations before public
+results can expose them. Sample size and observation range remain visible so a
+small cohort is not presented with false authority.
+
+These are resource and observable-work comparisons, not quality rankings.
+Lower token use, higher task count, or lower limit burn may reflect different
+work rather than a better model. The application therefore does not combine
+the measures into one universal score.
+
+Community sharing is off by default and is not required to read public results.
+After opt-in, the Hub contributes one allowlisted numeric summary per UTC day.
+The fixed header panel shows the upload schedule and last receipt and provides
+preview, settings, and signed withdrawal actions.
+
 ## Identity And Attribution
 
 The Models section navigates by `provider + base model`, so GPT-5.5 appears once
@@ -116,6 +140,13 @@ task IDs, and hashes. It does not store:
 
 CSV exports contain model/resource/work aggregates only. PNG exports capture
 the selected model-only chart.
+
+The optional Community payload applies a second strict allowlist before any
+network request. It excludes account and project identity, prompts, responses,
+source, diffs, raw paths, command payloads, provider credentials, and local
+history rows. See [Community Telemetry And Global Model Comparisons](COMMUNITY_TELEMETRY_SECURITY_PLAN.md)
+for the signed protocol, server boundary, suppression threshold, and residual
+integrity limits.
 
 The Hub bounds its own numeric history and source cache to 400 days, preserving
 the longest 365-day Statistics view. **File → Local data...** reports Hub-owned

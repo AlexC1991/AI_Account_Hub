@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local Wrangler development only. Signed registration,
+# submission, and withdrawal use the same protocol locally and in staging.
+ENVIRONMENT=local
+# Lower only for isolated local cohort-transition tests. Staging keeps 10.
+MIN_PUBLIC_CONTRIBUTORS=3

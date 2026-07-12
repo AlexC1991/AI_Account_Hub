@@ -34,16 +34,16 @@ if not defined PYRUN (
     exit /b 1
 )
 
-rem Ensure the Python package requirements are available for the Qt front-end
-rem and Python 3.10 compatibility. Python 3.11+ has tomllib built in; Python
-rem 3.10 gets the tomli backport from requirements.txt.
-%PYRUN% -c "import importlib.util, sys; import PySide6; raise SystemExit(0 if sys.version_info >= (3, 11) or importlib.util.find_spec('tomli') else 1)" >nul 2>nul
+rem Ensure the Qt front-end, signed community-upload crypto, and Python 3.10
+rem TOML compatibility packages are available. The signing private key is
+rem protected separately by Windows DPAPI; cryptography only performs P-256.
+%PYRUN% -c "import importlib.util, sys; import PySide6, cryptography; raise SystemExit(0 if sys.version_info >= (3, 11) or importlib.util.find_spec('tomli') else 1)" >nul 2>nul
 if errorlevel 1 (
     echo Installing AI Account Hub Python requirements. Please wait...
     if exist "%REQUIREMENTS%" (
         %PYRUN% -m pip install -r "%REQUIREMENTS%"
     ) else (
-        %PYRUN% -m pip install "PySide6>=6.8,<7" "tomli>=2.0.1"
+        %PYRUN% -m pip install "PySide6>=6.8,<7" "cryptography>=44,<47" "tomli>=2.0.1"
     )
     if errorlevel 1 (
         echo Python requirements could not be installed. Check Python and your network connection.

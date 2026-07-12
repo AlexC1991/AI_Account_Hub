@@ -197,7 +197,7 @@ def _preserve_corrupt_file(path: Path) -> None:
 
 def load_settings() -> dict:
     if not SETTINGS_FILE.exists():
-        return {"theme": "Midnight Slate", "autoRefreshEnabled": True, "autoRefreshMinutes": 10, "sortMode": "Manual", "cardTemplate": "Balanced"}
+        return {"theme": "Midnight Slate", "autoRefreshEnabled": True, "autoRefreshMinutes": 10, "sortMode": "Manual", "cardTemplate": "Balanced", "communitySharingEnabled": False, "communityConsentVersion": 0, "communityApiMode": "cloudflare-staging"}
     try:
         raw = json.loads(SETTINGS_FILE.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
@@ -209,6 +209,9 @@ def load_settings() -> dict:
     raw.setdefault("autoRefreshMinutes", 10)
     raw.setdefault("sortMode", "Manual")
     raw.setdefault("cardTemplate", "Balanced")
+    raw.setdefault("communitySharingEnabled", False)
+    raw.setdefault("communityConsentVersion", 0)
+    raw.setdefault("communityApiMode", "cloudflare-staging")
     if raw.get("sortMode") == "5h left":
         raw["sortMode"] = "Session left"
     if raw.get("cardTemplate") not in CARD_TEMPLATE_CHOICES:

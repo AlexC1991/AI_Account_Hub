@@ -11,6 +11,8 @@ set small, current, and free of authentication details.
 | `statistics-models.png` | Base models, reasoning filters, and token categories |
 | `statistics-productivity.png` | Observable work and measured limit movement |
 | `statistics-compare.png` | Same-model reasoning comparison and baseline deltas |
+| `statistics-community.png` | Privacy-thresholded Community model comparison workspace |
+| `community-sharing.png` | Fixed opt-in sharing control, schedule, and withdrawal actions |
 | `tray-widget.png` | Compact Best Next account widget |
 | `signal-rail.png` | Hub-styled account-limit warning |
 

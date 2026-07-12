@@ -42,6 +42,7 @@ ai_account_hub/
     main_window.py               standalone shell and lifecycle
     theme.py, tokens.py          QSS theme manager and design tokens
     account_notifications.py     transition rules and notification settings
+    community_sharing.py         consent, status, preview and withdrawal UI
     signal_rail.py               custom themed notification overlays
     storage_dialog.py            local-data ownership and safe cleanup UI
     tray_widget.py               system tray and Best Next popup
@@ -58,6 +59,8 @@ ai_account_hub/
     history_db.py                SQLite usage/limit history
     model_analytics.py           Codex/Claude numeric session aggregation
     benchmark_analytics.py       passive resource/work importer and formulas
+    community_api.py             allowlisted payload and signed HTTPS client
+    community_identity.py        DPAPI-protected P-256 installation identity
     storage.py                   size reporting and bounded managed cleanup
     provider_discovery.py        deterministic provider scanner
     browser.py                   isolated browser profiles
@@ -68,6 +71,11 @@ ai_account_hub/
 scripts/
   codex-account-limits-helper.mjs
                                   Codex app-server rate-limit/usage probe
+
+cloudflare/community-api/
+  src/index.ts                    public reads and signed write boundary
+  migrations/                     installation, receipt and rollup schema
+  wrangler.jsonc                  non-secret D1/R2/rate-limit bindings
 ```
 
 The public package contains the Statistics workspace and Accounts
@@ -94,6 +102,13 @@ dashboard. Provider apps and CLIs continue to own prompts and execution.
    retaining the original effort groups for reasoning filters, chart series,
    attribution, Compare baselines/full-value bars/deltas, and export. Prompt text, response text, reasoning content,
    source, diffs, commands, file paths, and tool output are not retained.
+7. The Community screen reads bounded public aggregates without requiring
+   consent. When the user explicitly opts in, `community_api` reduces the
+   current numeric groups to the allowlisted daily schema and signs the request
+   with the installation identity. The Cloudflare Worker verifies the schema,
+   signature, timestamp, nonce, rate limit, and daily uniqueness before writing
+   private D1/R2 state. Qualifying model/reasoning rollups are published only
+   after the configured distinct-installation threshold is met.
 
 No worker should modify Qt widgets. Results return through Qt signals and the UI
 thread performs rendering.
@@ -148,6 +163,19 @@ change functions that close over `hub_core` globals.
 Provider discovery proves that software exists and can often answer
 `--version`. It does not prove that an account is logged in.
 
+## Community trust boundary
+
+Community sharing is a separate opt-in path and is not involved in account
+switching, provider launches, or local Statistics. The desktop contains the
+public Worker URL but no Cloudflare API token, R2 key, D1 credential, shared
+upload secret, or provider credential.
+
+The installation private key is encrypted for the current Windows user with
+DPAPI. Only its public key and derived pseudonymous installation ID cross the
+network. Turning sharing off stops future uploads; signed withdrawal removes
+accepted submissions and the local signing identity. Public results remain
+available while sharing is off.
+
 For Store Codex builds on Windows, discovery may stage only the package's
 official CLI executable under the Hub runtime root because direct execution
 from `WindowsApps` can be denied. The staged file is refreshed atomically from
@@ -183,7 +211,9 @@ cannot be shown.
 Runtime data lives under `AI_HUB_LAUNCHER_ROOT` or the platform default, never
 inside the source/package directory. It includes profiles, settings, SQLite
 history, browser profiles, logs, generated icons, desktop-switch state, and the
-optional Windows Store Codex CLI staging copy.
+optional Windows Store Codex CLI staging copy. Opted-in Community sharing also
+stores the DPAPI-protected installation key and the last non-secret receipt in
+this external runtime root.
 
 The discovery report contains installation paths and versions only. It must not
 contain provider tokens, cookies, auth files, or a full environment dump.
@@ -191,7 +221,8 @@ contain provider tokens, cookies, auth files, or a full environment dump.
 ## Standalone packaging
 
 A frozen build bundles provider icons, the Codex Node helper, Qt plugins,
-and any public docs still linked by the Help menu. It must resolve those files
+the public setup/security documents, and current README screenshots. It must
+resolve those files
 at their source-relative paths so `__file__` resolves them in PyInstaller's
 one-folder resource directory instead of assuming the source checkout
 is beside `__file__`.

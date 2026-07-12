@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ai-account-hub-community-api-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ENVIRONMENT": "staging",
+    "PUBLISHED_MODELS_KEY": "published/community-models-v1.json",
+    "PUBLISHED_REAL_MODELS_KEY": "published/community-models-real-v1.json",
+    "MIN_PUBLIC_CONTRIBUTORS": "10"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ai-hub-community-staging",
+      "database_id": "df6ab4f4-ca13-4284-881e-01eed1e0b95a",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "TELEMETRY_BUCKET",
+      "bucket_name": "ai-hub-data"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "REGISTER_RATE_LIMITER",
+      "namespace_id": "24001",
+      "simple": { "limit": 30, "period": 60 }
+    },
+    {
+      "name": "WRITE_RATE_LIMITER",
+      "namespace_id": "24002",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ],
+  "triggers": {
+    "crons": ["17 * * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

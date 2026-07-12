@@ -137,8 +137,16 @@ def load_settings() -> dict:
             settings["theme"] = saved_theme
     except Exception:
         pass
+    # Community sharing is explicit opt-in. These defaults live in the UI data
+    # layer so older settings files gain the new keys without a migration write.
+    settings.setdefault("communitySharingEnabled", False)
+    settings.setdefault("communityConsentVersion", 0)
+    settings.setdefault("communityApiMode", "cloudflare-staging")
+    settings.setdefault("communityLastUploadUtc", "")
+    settings.setdefault("communityLastReceipt", {})
     if demo_data.DEMO:
         settings["autoRefreshEnabled"] = False  # never overwrite demo data on a timer
+        settings["communitySharingEnabled"] = False
     return settings
 
 
@@ -208,4 +216,3 @@ def discover_tools() -> dict:
         return provider_discovery.discover_provider_tools()
     except Exception:  # pragma: no cover - discovery must never block the UI
         return {"providers": {}, "support": {}}
-
