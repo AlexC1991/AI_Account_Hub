@@ -195,13 +195,16 @@ def build_submission_payload(groups: list[dict], *, days: int = 1) -> dict:
             "provider": provider,
             "modelId": model_id,
             "reasoningEffort": str(group.get("reasoningEffort") or "").strip().lower(),
-            "totalTokens": max(0, int(aggregate("totalTokens", "tokens"))),
-            "completedTasks": max(0, int(aggregate("completedTasks", "tasks"))),
-            "activeMs": max(0, int(aggregate("activeMs"))),
-            "edits": max(0, int(aggregate("edits"))),
-            "filesChanged": max(0, int(aggregate("filesChanged", "files"))),
-            "tests": max(0, int(aggregate("tests"))),
-            "commands": max(0, int(aggregate("commands"))),
+            # Per-provider-account views can legitimately contain fractional
+            # means. Preserve them through validation instead of truncating a
+            # two-account average back to an integer.
+            "totalTokens": max(0.0, round(aggregate("totalTokens", "tokens"), 4)),
+            "completedTasks": max(0.0, round(aggregate("completedTasks", "tasks"), 4)),
+            "activeMs": max(0.0, round(aggregate("activeMs"), 4)),
+            "edits": max(0.0, round(aggregate("edits"), 4)),
+            "filesChanged": max(0.0, round(aggregate("filesChanged", "files"), 4)),
+            "tests": max(0.0, round(aggregate("tests"), 4)),
+            "commands": max(0.0, round(aggregate("commands"), 4)),
             "shortBurn": max(0.0, aggregate("shortBurn")),
             "weeklyBurn": max(0.0, aggregate("weeklyBurn")),
         })
@@ -422,18 +425,59 @@ class CloudflareCommunityApi:
                 if isinstance(group["days"].get(day), dict)
             }
             buckets = list(group["days"].values())
-            tasks = sum(int(bucket.get("tasks") or 0) for bucket in buckets)
-            group["totalTokens"] = sum(int(bucket.get("tokens") or 0) for bucket in buckets)
+            tasks = sum(float(bucket.get("tasks") or 0) for bucket in buckets)
+            group["totalTokens"] = sum(float(bucket.get("tokens") or 0) for bucket in buckets)
             group["completedTasks"] = tasks
-            group["observations"] = sum(
-                int(bucket.get("observations") or 0) for bucket in buckets
+            observed_tasks = sum(
+                float(bucket.get("observations") or 0) for bucket in buckets
             )
-            tasks_per_session = float(group.get("tasksPerSession") or 0)
-            weekly_per_task = float(group.get("weeklyBurnPerTask") or 0)
-            group["shortBurn"] = round(
-                tasks / tasks_per_session * 100, 1
-            ) if tasks_per_session else 0
-            group["weeklyBurn"] = round(tasks * weekly_per_task, 1)
+            group["observations"] = observed_tasks
+            group["shortBurn"] = sum(float(bucket.get("shortBurn") or 0) for bucket in buckets)
+            group["weeklyBurn"] = sum(float(bucket.get("weeklyBurn") or 0) for bucket in buckets)
+
+            # Rebuild ratios from the selected daily window. The public object
+            # spans up to a year, but a 7/30/90-day client selection must not
+            # retain the full-period leaderboard result.
+            weighted_tokens = sum(
+                float(bucket.get("tokensPerTask") or 0)
+                * float(bucket.get("observations") or 0)
+                for bucket in buckets
+            )
+            weighted_weekly = sum(
+                float(bucket.get("weeklyBurnPerTask") or 0)
+                * float(bucket.get("observations") or 0)
+                for bucket in buckets
+            )
+            weighted_short_burn = sum(
+                float(bucket.get("observations") or 0) * 100
+                / float(bucket.get("tasksPerSession") or 1)
+                for bucket in buckets
+                if float(bucket.get("tasksPerSession") or 0) > 0
+            )
+            group["tokensPerTask"] = (
+                weighted_tokens / observed_tasks if observed_tasks else 0
+            )
+            group["weeklyBurnPerTask"] = (
+                weighted_weekly / observed_tasks if observed_tasks else 0
+            )
+            group["tasksPerSession"] = (
+                observed_tasks * 100 / weighted_short_burn if weighted_short_burn else 0
+            )
+            group["normalized"] = {
+                "tokensPerCompletedTask": group["tokensPerTask"],
+                "tasksPerMillionTokens": (
+                    observed_tasks * 1_000_000 / weighted_tokens
+                    if weighted_tokens else 0
+                ),
+                "tasksPerSession": group["tasksPerSession"],
+            }
+        payload["observedTasks"] = sum(
+            float(group.get("observations") or 0)
+            for group in payload["groups"] if isinstance(group, dict)
+        )
+        provider_counts = payload.get("providerContributors")
+        if provider != "all" and isinstance(provider_counts, dict):
+            payload["contributors"] = int(provider_counts.get(provider) or 0)
         payload["periodDays"] = requested_days
         payload.setdefault("mode", self.mode)
         payload.setdefault("endpoint", self.endpoint)

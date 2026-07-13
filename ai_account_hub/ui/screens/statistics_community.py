@@ -140,9 +140,6 @@ class StatisticsCommunityMixin:
         control_layout.addWidget(self.community_ranking)
         control_layout.addStretch(1)
         control_layout.addWidget(_label("View", "sectionLabel"))
-        # Default to the time-series "Lines" view: the "Dots" scatter plots
-        # per-model aggregates that don't vary over the range, so it reads as a
-        # static image. Lines/Bars remain one click away.
         self.community_chart_mode = SegmentedSlider(
             [("Lines", "lines"), ("Dots", "dots"), ("Bars", "bars")],
             self._tm.tokens,
@@ -328,9 +325,15 @@ class StatisticsCommunityMixin:
             "observations": "Larger samples rank first; volume is not a quality score",
         }
         if mode == "dots":
-            title = "Community efficiency map"
-            caption = "Tokens per task across the x-axis; tasks per 5h across the y-axis"
-            kind, chart_metric = "community_scatter", "tasksPerSession"
+            scatter_copy = {
+                "tasksPerSession": ("Throughput and token cost", "Token cost vs 5-hour task capacity"),
+                "tokensPerTask": ("Token cost and throughput", "5-hour task capacity vs token cost"),
+                "weeklyBurnPerTask": ("Weekly limit economics", "5-hour task capacity vs weekly burn per task"),
+                "observations": ("Evidence coverage", "Token cost vs observed task volume"),
+            }
+            title, axis_copy = scatter_copy.get(metric, scatter_copy["tasksPerSession"])
+            caption = f"{axis_copy}; position uses live values and marker size reflects observations"
+            kind, chart_metric = "community_scatter", metric
         elif mode == "lines":
             title = f"{titles[metric]} over time"
             caption = f"{captions[metric]} across the selected date range"
@@ -422,5 +425,14 @@ class StatisticsCommunityMixin:
 
     def community_payload(self) -> dict:
         """Return exactly what the sharing consent preview and test API receive."""
-
-        return build_submission_payload(self._visible_groups(), days=1)
+        # Community submissions are always a one-day per-provider-account mean.
+        # They must not depend on whichever local UI scope/aggregation happens to
+        # be selected, and owning three provider accounts must not contribute
+        # three times the weight of owning one.
+        view = build_benchmark_view(
+            self._snapshot,
+            account_id="all",
+            days=1,
+            aggregation_mode="per_provider_account",
+        )
+        return build_submission_payload(list(view.get("groups") or []), days=1)

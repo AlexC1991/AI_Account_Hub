@@ -26,7 +26,12 @@ _TOKEN_FIELDS = (
 )
 _WORK_FIELDS = (
     "toolCalls", "toolErrors", "commands", "tests", "testsPassed", "edits",
-    "filesChanged", "linesAdded", "linesDeleted", "rollbacks", "compactions",
+    "filesChanged", "fileTouches", "linesAdded", "linesDeleted", "rollbacks", "compactions",
+)
+_SCALED_FIELDS = (
+    *_TOKEN_FIELDS, "generatedTokens", *_WORK_FIELDS, "workTokens", "observedTokens",
+    "activeMs", "completedTasks", "abortedTasks", "incompleteTasks",
+    "shortBurn", "weeklyBurn",
 )
 
 
@@ -41,6 +46,7 @@ def _new_model_group(source: dict) -> dict[str, Any]:
         "modelLabel": str(source.get("modelLabel") or source.get("modelName") or "Model"),
         **{field: 0 for field in _TOKEN_FIELDS},
         **{field: 0 for field in _WORK_FIELDS},
+        "generatedTokens": 0,
         # Observed, non-cache "work" tokens summed from parsed tasks. Cache
         # re-reads (94-98% of raw totals) are excluded so cross-model
         # comparisons and per-task ratios reflect real work, not context size.
@@ -55,18 +61,27 @@ def _new_model_group(source: dict) -> dict[str, Any]:
         "incompleteTasks": 0,
         "shortBurn": 0.0,
         "weeklyBurn": 0.0,
+        "shortBurnObservations": 0,
+        "weeklyBurnObservations": 0,
         "days": {},
         "activityShapes": defaultdict(int),
         "accountAttribution": set(),
+        "tokenAttribution": set(),
+        "workAttribution": set(),
         "fileHashes": set(),
+        "fileHashesByProfile": defaultdict(set),
+        "resourceProfileIds": set(),
     }
 
 
 def _day_bucket(group: dict, day: str) -> dict:
     return group["days"].setdefault(day, {
-        "tokens": 0, "workTokens": 0, "tasks": 0, "edits": 0, "files": 0,
+        "tokens": 0, "workTokens": 0, "completedTasks": 0, "abortedTasks": 0,
+        "incompleteTasks": 0, "edits": 0, "fileTouches": 0,
+        "filesChanged": 0,
         "tests": 0, "commands": 0, "activeMs": 0,
         "shortBurn": 0.0, "weeklyBurn": 0.0,
+        "shortBurnObservations": 0, "weeklyBurnObservations": 0,
     })
 
 
@@ -94,8 +109,13 @@ def _box_stats(values: Iterable[int | float]) -> dict | None:
 def _normalized(group: dict) -> dict:
     # Use observed non-cache "work" tokens so ratios are not dominated by cache
     # re-reads (which are 94-98% of raw totals) or inferred account totals.
-    tokens = max(0, int(group.get("workTokens") or 0))
-    completed = max(0, int(group["completedTasks"]))
+    tokens = max(
+        0.0,
+        float(group.get("workTokens") or 0)
+        if "workTokens" in group
+        else float(group.get("totalTokens") or 0) - float(group.get("cachedInputTokens") or 0),
+    )
+    completed = max(0.0, float(group["completedTasks"]))
     short = max(0.0, float(group["shortBurn"]))
     weekly = max(0.0, float(group["weeklyBurn"]))
     active_hours = max(0.0, float(group["activeMs"]) / 3_600_000)
@@ -103,11 +123,11 @@ def _normalized(group: dict) -> dict:
     def metrics(scale: float) -> dict:
         return {
             "tasks": completed * scale,
-            "edits": int(group["edits"]) * scale,
-            "files": int(group["filesChanged"]) * scale,
-            "tests": int(group["tests"]) * scale,
-            "commands": int(group["commands"]) * scale,
-            "lines": (int(group["linesAdded"]) + int(group["linesDeleted"])) * scale,
+            "edits": float(group["edits"]) * scale,
+            "files": float(group["filesChanged"]) * scale,
+            "tests": float(group["tests"]) * scale,
+            "commands": float(group["commands"]) * scale,
+            "lines": (float(group["linesAdded"]) + float(group["linesDeleted"])) * scale,
         }
 
     return {
@@ -120,37 +140,106 @@ def _normalized(group: dict) -> dict:
     }
 
 
+def _scope_provider(account_id: str) -> str:
+    prefix = "provider:"
+    return account_id[len(prefix):].strip().lower() if account_id.startswith(prefix) else ""
+
+
+def _scope_matches(account_id: str, provider: object, profile_id: object = "") -> bool:
+    scoped_provider = _scope_provider(account_id)
+    if scoped_provider:
+        return str(provider or "").strip().lower() == scoped_provider
+    return account_id == "all" or str(profile_id or "") == account_id
+
+
+def _scale_group_for_accounts(group: dict, divisor: int, mode: str) -> dict:
+    output = dict(group)
+    output.pop("resourceProfileIds", None)
+    output["providerAccountCount"] = max(1, int(divisor or 1))
+    output["aggregationMode"] = mode
+    output["aggregationDivisor"] = max(1, int(divisor or 1)) if mode == "per_provider_account" else 1
+    scale = 1.0 / output["aggregationDivisor"]
+    output["rawTotals"] = {
+        field: float(group.get(field) or 0) for field in _SCALED_FIELDS
+    }
+    if scale != 1.0:
+        for field in _SCALED_FIELDS:
+            output[field] = float(group.get(field) or 0) * scale
+        output["activityShapes"] = {
+            str(key): float(value or 0) * scale
+            for key, value in (group.get("activityShapes") or {}).items()
+        }
+        scaled_days = {}
+        for day, bucket in (group.get("days") or {}).items():
+            scaled_days[str(day)] = {
+                str(key): (
+                    float(value or 0)
+                    if str(key).endswith("Observations")
+                    else float(value or 0) * scale
+                )
+                for key, value in (bucket or {}).items()
+            }
+        output["days"] = scaled_days
+    average_unique_files = output.pop("_averageUniqueFiles", None)
+    if mode == "per_provider_account" and average_unique_files is not None:
+        # Unlike additive file touches, unique files must be deduplicated inside
+        # each exact profile before taking the provider-account mean.
+        output["filesChanged"] = float(average_unique_files)
+    output["normalized"] = _normalized(output)
+    return output
+
+
 def build_benchmark_view(
     snapshot: dict,
     *,
     account_id: str = "all",
     model_keys: Iterable[str] | None = None,
     days: int = 30,
+    aggregation_mode: str = "combined",
 ) -> dict:
     """Create model-only chart data; account selection remains an input filter."""
     selected_models = {str(value).lower() for value in (model_keys or []) if value}
     cutoff = (dt.date.today() - dt.timedelta(days=max(1, int(days)) - 1)).isoformat()
     groups: dict[str, dict] = {}
+    provider_accounts: dict[str, set[str]] = defaultdict(set)
+    mode = (
+        "per_provider_account"
+        if str(aggregation_mode or "").strip().lower() == "per_provider_account"
+        else "combined"
+    )
 
     for row in snapshot.get("modelUsageRows", []):
         if not isinstance(row, dict):
             continue
         if row.get("modelId") == CODEX_ACCOUNT_TOTAL_MODEL:
             continue
-        if account_id != "all" and str(row.get("profileId") or "") != account_id:
+        provider = str(row.get("provider") or "").strip().lower()
+        row_profile_id = str(row.get("profileId") or "")
+        if not _scope_matches(account_id, provider, row_profile_id):
             continue
         key = str(row.get("filterKey") or "").lower()
         if not key or (selected_models and key not in selected_models):
             continue
         group = groups.setdefault(key, _new_model_group(row))
         group["accountAttribution"].add(str(row.get("attributionState") or "unknown"))
+        group["tokenAttribution"].add(str(row.get("attributionState") or "unknown"))
+        row_has_usage = False
         for day, bucket in (row.get("days") or {}).items():
             if str(day) < cutoff:
                 continue
+            bucket_total = _number(bucket.get("totalTokens"))
+            if bucket_total <= 0:
+                continue
+            row_has_usage = True
             target = _day_bucket(group, str(day))
-            target["tokens"] += _number(bucket.get("totalTokens"))
+            target["tokens"] += bucket_total
             for field in _TOKEN_FIELDS:
                 group[field] += _number(bucket.get(field))
+            generated = _number(bucket.get("reasoningTokens")) + _number(bucket.get("outputTokens"))
+            group["generatedTokens"] += generated
+        if row_has_usage and row_profile_id:
+            provider_accounts[provider].add(row_profile_id)
+            group["resourceProfileIds"].add(row_profile_id)
 
     for task in snapshot.get("tasks", []):
         if not isinstance(task, dict) or str(task.get("day") or "") < cutoff:
@@ -161,7 +250,16 @@ def build_benchmark_view(
         profile_ids = set(str(value) for value in task.get("profileIds", []))
         selected_profile = _hash(account_id)
         is_shared_codex = task.get("provider") == "codex" and task.get("accountAttribution") == "shared"
-        if account_id != "all" and account_id not in profile_ids and selected_profile not in profile_ids and not is_shared_codex:
+        task_provider = str(task.get("provider") or "").lower()
+        scoped_provider = _scope_provider(account_id)
+        if scoped_provider and task_provider != scoped_provider:
+            continue
+        if is_shared_codex and account_id != "all" and not scoped_provider:
+            # Codex Desktop history is shared across logins. Showing that whole
+            # history under every individual account would duplicate the same
+            # work and falsely imply exact account attribution.
+            continue
+        if not scoped_provider and account_id != "all" and account_id not in profile_ids and selected_profile not in profile_ids and not is_shared_codex:
             continue
         group = groups.get(key)
         if group is None:
@@ -169,6 +267,7 @@ def build_benchmark_view(
             # cannot be compared against resources consumed with confidence.
             continue
         group["accountAttribution"].add(str(task.get("accountAttribution") or "unknown"))
+        group["workAttribution"].add(str(task.get("accountAttribution") or "unknown"))
         group["activeMs"] += _number(task.get("durationMs"))
         if _number(task.get("ttftMs")):
             group["ttftMs"].append(_number(task.get("ttftMs")))
@@ -184,14 +283,23 @@ def build_benchmark_view(
         status_key = "completedTasks" if status == "completed" else "abortedTasks" if status == "aborted" else "incompleteTasks"
         group[status_key] += 1
         for field in _WORK_FIELDS:
-            group[field] += _number(task.get(field))
-        group["fileHashes"].update(str(value) for value in task.get("fileHashes", []) if value)
+            if field != "fileTouches":
+                group[field] += _number(task.get(field))
+        group["fileTouches"] += _number(task.get("filesChanged"))
+        task_file_hashes = {
+            str(value) for value in task.get("fileHashes", []) if value
+        }
+        group["fileHashes"].update(task_file_hashes)
+        if task.get("accountAttribution") == "exact":
+            for profile_hash in profile_ids:
+                group["fileHashesByProfile"][profile_hash].update(task_file_hashes)
         group["activityShapes"][str(task.get("activityShape") or "Investigation")] += 1
         day = _day_bucket(group, str(task.get("day") or ""))
-        day["tasks"] += 1
+        day[status_key] += 1
         day["workTokens"] += task_work
         day["edits"] += _number(task.get("edits"))
-        day["files"] += _number(task.get("filesChanged"))
+        day["fileTouches"] += _number(task.get("filesChanged"))
+        day["filesChanged"] += _number(task.get("filesChanged"))
         day["tests"] += _number(task.get("tests"))
         day["commands"] += _number(task.get("commands"))
         day["activeMs"] += _number(task.get("durationMs"))
@@ -199,7 +307,11 @@ def build_benchmark_view(
     for segment in snapshot.get("limitSegments", []):
         if not isinstance(segment, dict) or str(segment.get("day") or "") < cutoff:
             continue
-        if account_id != "all" and str(segment.get("profileId") or "") not in {account_id, _hash(account_id)}:
+        segment_provider = str(segment.get("provider") or "").lower()
+        scoped_provider = _scope_provider(account_id)
+        if scoped_provider and segment_provider != scoped_provider:
+            continue
+        if not scoped_provider and account_id != "all" and str(segment.get("profileId") or "") not in {account_id, _hash(account_id)}:
             continue
         for allocation in segment.get("allocations", []):
             key = str(allocation.get("filterKey") or "").lower()
@@ -210,9 +322,17 @@ def build_benchmark_view(
             weekly = max(0.0, float(allocation.get("weeklyBurn") or 0))
             group["shortBurn"] += short
             group["weeklyBurn"] += weekly
+            if short > 0:
+                group["shortBurnObservations"] += 1
+            if weekly > 0:
+                group["weeklyBurnObservations"] += 1
             day = _day_bucket(group, str(segment.get("day") or ""))
             day["shortBurn"] += short
             day["weeklyBurn"] += weekly
+            if short > 0:
+                day["shortBurnObservations"] += 1
+            if weekly > 0:
+                day["weeklyBurnObservations"] += 1
 
     output: list[dict] = []
     for group in groups.values():
@@ -220,34 +340,53 @@ def build_benchmark_view(
         # canonical resource activity in the selected range.
         if int(group["totalTokens"]) <= 0:
             continue
-        # No parsed tasks (e.g. inferred account-total rows with no session
-        # composition): fall back to the best available non-cache estimate.
-        if int(group.get("workTokens") or 0) <= 0:
-            group["workTokens"] = max(0, int(group["totalTokens"]) - int(group["cachedInputTokens"]))
-        # Fold reasoning into output for a fair cross-provider composition:
-        # Codex reports reasoning_output_tokens separately, but Anthropic bundles
-        # thinking into output_tokens and never itemises it. Left split, Claude
-        # shows a 0 "reasoning" slice against Codex's ~35%, which misreads as
-        # "Claude doesn't reason". Total and workTokens are unchanged.
-        group["outputTokens"] = int(group.get("outputTokens") or 0) + int(group.get("reasoningTokens") or 0)
-        group["reasoningTokens"] = 0
         group["ttftDistribution"] = _box_stats(group.pop("ttftMs"))
         group["taskTokenDistribution"] = _box_stats(group.pop("taskTokens"))
         group["durationDistribution"] = _box_stats(group.pop("taskDurationsMs"))
         group["activityShapes"] = dict(sorted(group["activityShapes"].items()))
         unique_files = set(group.pop("fileHashes"))
+        files_by_profile = {
+            str(profile_hash): set(values)
+            for profile_hash, values in group.pop("fileHashesByProfile").items()
+        }
         if unique_files:
             group["filesChanged"] = len(unique_files)
         group["fileHashValues"] = sorted(unique_files)
+        group["fileHashValuesByProfile"] = {
+            profile_hash: sorted(values)
+            for profile_hash, values in sorted(files_by_profile.items())
+        }
+        group["taskObservations"] = (
+            int(group["completedTasks"]) + int(group["abortedTasks"]) + int(group["incompleteTasks"])
+        )
+        group["durationObservations"] = int((group.get("durationDistribution") or {}).get("count") or 0)
         attributions = set(group.pop("accountAttribution"))
+        token_attributions = set(group.pop("tokenAttribution"))
+        work_attributions = set(group.pop("workAttribution"))
+        group["tokenAttribution"] = (
+            "mixed" if "mixed" in token_attributions or len(token_attributions) > 1
+            else next(iter(token_attributions), "unknown")
+        )
+        group["workAttribution"] = (
+            "shared" if "shared" in work_attributions
+            else "exact" if "exact" in work_attributions
+            else "not exposed"
+        )
+        provider = str(group.get("provider") or "")
         group["workScope"] = (
             "shared Codex history" if "shared" in attributions
+            else "not attributable to selected Codex account"
+            if provider == "codex" and account_id != "all" and not _scope_provider(account_id)
             else "selected account history" if account_id != "all"
             else "visible account history"
         )
-        group["normalized"] = _normalized(group)
         group["days"] = dict(sorted(group["days"].items()))
-        output.append(group)
+        account_count = len(provider_accounts.get(str(group.get("provider") or ""), set())) or 1
+        if files_by_profile:
+            group["_averageUniqueFiles"] = (
+                sum(len(values) for values in files_by_profile.values()) / account_count
+            )
+        output.append(_scale_group_for_accounts(group, account_count, mode))
     output.sort(key=lambda item: (-int(item["totalTokens"]), str(item["modelLabel"]).lower()))
 
     journal = []
@@ -259,7 +398,13 @@ def build_benchmark_view(
         profile_ids = set(str(value) for value in task.get("profileIds", []))
         selected_profile = _hash(account_id)
         shared = task.get("provider") == "codex" and task.get("accountAttribution") == "shared"
-        if account_id != "all" and account_id not in profile_ids and selected_profile not in profile_ids and not shared:
+        task_provider = str(task.get("provider") or "").lower()
+        scoped_provider = _scope_provider(account_id)
+        if scoped_provider and task_provider != scoped_provider:
+            continue
+        if shared and account_id != "all" and not scoped_provider:
+            continue
+        if not scoped_provider and account_id != "all" and account_id not in profile_ids and selected_profile not in profile_ids and not shared:
             continue
         journal.append({
             "day": task.get("day", ""), "modelLabel": task.get("modelLabel", "Model"),
@@ -282,14 +427,19 @@ def build_benchmark_view(
         "journal": journal,
         "summary": {
             "models": len(output),
-            "tokens": sum(int(item["totalTokens"]) for item in output),
-            "workTokens": sum(int(item.get("workTokens") or 0) for item in output),
-            "completedTasks": sum(int(item["completedTasks"]) for item in output),
-            "edits": sum(int(item["edits"]) for item in output),
-            "tests": sum(int(item["tests"]) for item in output),
+            "tokens": sum(float(item["totalTokens"]) for item in output),
+            "workTokens": sum(float(item.get("workTokens") or 0) for item in output),
+            "completedTasks": sum(float(item["completedTasks"]) for item in output),
+            "edits": sum(float(item["edits"]) for item in output),
+            "tests": sum(float(item["tests"]) for item in output),
             "shortBurn": sum(float(item["shortBurn"]) for item in output),
             "weeklyBurn": sum(float(item["weeklyBurn"]) for item in output),
         },
+        "aggregationMode": mode,
+        "providerAccountCounts": {
+            provider: len(profile_ids) for provider, profile_ids in sorted(provider_accounts.items())
+        },
+        "accountScope": account_id,
         "sourceStats": snapshot.get("sourceStats", {}),
         "privacy": snapshot.get("privacy", {}),
     }
@@ -305,11 +455,15 @@ def base_model_key(group: dict) -> str:
 def aggregate_base_model_groups(groups: Iterable[dict]) -> list[dict]:
     """Combine effort variants while retaining reasoning drill-down metadata."""
     numeric_fields = (
-        *_TOKEN_FIELDS, *_WORK_FIELDS, "workTokens", "observedTokens", "activeMs",
+        *_TOKEN_FIELDS, *_WORK_FIELDS, "generatedTokens", "workTokens", "observedTokens", "activeMs",
         "completedTasks", "abortedTasks", "incompleteTasks", "shortBurn", "weeklyBurn",
+        "shortBurnObservations", "weeklyBurnObservations", "taskObservations",
+        "durationObservations",
     )
     combined: dict[str, dict] = {}
     scopes: dict[str, set[str]] = defaultdict(set)
+    token_attributions: dict[str, set[str]] = defaultdict(set)
+    work_attributions: dict[str, set[str]] = defaultdict(set)
 
     for source in groups:
         if not isinstance(source, dict):
@@ -333,24 +487,47 @@ def aggregate_base_model_groups(groups: Iterable[dict]) -> list[dict]:
                 "days": {},
                 "activityShapes": defaultdict(int),
                 "fileHashValues": set(),
+                "fileHashValuesByProfile": defaultdict(set),
                 "taskTokenDistribution": None,
                 "durationDistribution": None,
                 "ttftDistribution": None,
+                "aggregationMode": str(source.get("aggregationMode") or "combined"),
+                "aggregationDivisor": int(source.get("aggregationDivisor") or 1),
+                "providerAccountCount": int(source.get("providerAccountCount") or 1),
+                "hasWorkTokenSource": False,
                 **{field: 0 for field in numeric_fields},
             }
             combined[key] = target
 
         for field in numeric_fields:
-            target[field] += _number(source.get(field))
+            value = source.get(field)
+            if field == "taskObservations" and value is None:
+                value = sum(
+                    float(source.get(key) or 0)
+                    for key in ("completedTasks", "abortedTasks", "incompleteTasks")
+                )
+            elif field == "durationObservations" and value is None:
+                value = int(float(source.get("activeMs") or 0) > 0)
+            elif field == "shortBurnObservations" and value is None:
+                value = int(float(source.get("shortBurn") or 0) > 0)
+            elif field == "weeklyBurnObservations" and value is None:
+                value = int(float(source.get("weeklyBurn") or 0) > 0)
+            target[field] += float(_float(value) or 0)
+        if "workTokens" in source:
+            target["hasWorkTokenSource"] = True
         for day, bucket in (source.get("days") or {}).items():
             destination = _day_bucket(target, str(day))
             for field in destination:
-                destination[field] += _number((bucket or {}).get(field))
+                destination[field] += float(_float((bucket or {}).get(field)) or 0)
         for shape, count in (source.get("activityShapes") or {}).items():
-            target["activityShapes"][str(shape)] += int(count or 0)
+            target["activityShapes"][str(shape)] += float(count or 0)
         target["fileHashValues"].update(
             str(value) for value in source.get("fileHashValues", []) if value
         )
+        for profile_hash, values in (source.get("fileHashValuesByProfile") or {}).items():
+            target["fileHashValuesByProfile"][str(profile_hash)].update(
+                str(value) for value in values if value
+            )
 
         effort = str(source.get("reasoningEffort") or "")
         effort_name = str(source.get("reasoningEffortName") or "") or "Default"
@@ -358,12 +535,14 @@ def aggregate_base_model_groups(groups: Iterable[dict]) -> list[dict]:
             "effort": effort,
             "name": effort_name,
             "filterKey": str(source.get("filterKey") or ""),
-            "tokens": int(source.get("totalTokens") or 0),
+            "tokens": float(source.get("totalTokens") or 0),
         })
         target["variantFilterKeys"].append(str(source.get("filterKey") or ""))
         scope = str(source.get("workScope") or "").strip()
         if scope:
             scopes[key].add(scope)
+        token_attributions[key].add(str(source.get("tokenAttribution") or "unknown"))
+        work_attributions[key].add(str(source.get("workAttribution") or "not exposed"))
 
     output = []
     for key, group in combined.items():
@@ -381,13 +560,41 @@ def aggregate_base_model_groups(groups: Iterable[dict]) -> list[dict]:
         group["days"] = dict(sorted(group["days"].items()))
         file_hashes = set(group["fileHashValues"])
         group["fileHashValues"] = sorted(file_hashes)
-        if file_hashes:
-            group["filesChanged"] = len(file_hashes)
+        files_by_profile = {
+            profile_hash: set(values)
+            for profile_hash, values in group["fileHashValuesByProfile"].items()
+        }
+        group["fileHashValuesByProfile"] = {
+            profile_hash: sorted(values)
+            for profile_hash, values in sorted(files_by_profile.items())
+        }
+        if group.get("aggregationMode") == "per_provider_account" and files_by_profile:
+            group["filesChanged"] = sum(
+                len(values) for values in files_by_profile.values()
+            ) / max(1, int(group.get("providerAccountCount") or 1))
+        elif file_hashes:
+            group["filesChanged"] = len(file_hashes) / max(1, int(group.get("aggregationDivisor") or 1))
         known_scopes = scopes.get(key, set())
         group["workScope"] = (
             "shared Codex history" if "shared Codex history" in known_scopes
             else next(iter(sorted(known_scopes)), "visible account history")
         )
+        token_states = token_attributions.get(key, {"unknown"})
+        group["tokenAttribution"] = (
+            "mixed" if "mixed" in token_states or len(token_states) > 1
+            else next(iter(token_states), "unknown")
+        )
+        work_states = work_attributions.get(key, {"not exposed"})
+        group["workAttribution"] = (
+            "shared" if "shared" in work_states
+            else "exact" if "exact" in work_states
+            else "not exposed"
+        )
+        if not group.pop("hasWorkTokenSource", False):
+            group["workTokens"] = max(
+                0.0,
+                float(group.get("totalTokens") or 0) - float(group.get("cachedInputTokens") or 0),
+            )
         group["normalized"] = _normalized(group)
         output.append(group)
 
@@ -399,6 +606,35 @@ _HEAD_TO_HEAD_METRICS = (
     "workTokens", "totalTokens", "completedTasks", "edits", "filesChanged", "tests",
     "commands", "activeMs", "shortBurn", "weeklyBurn",
 )
+
+
+def _comparison_metric_value(group: dict, metric: str) -> float | None:
+    short_observations = group.get("shortBurnObservations")
+    weekly_observations = group.get("weeklyBurnObservations")
+    duration_observations = group.get("durationObservations")
+    task_observations = group.get("taskObservations")
+    if short_observations is None:
+        short_observations = int(float(group.get("shortBurn") or 0) > 0)
+    if weekly_observations is None:
+        weekly_observations = int(float(group.get("weeklyBurn") or 0) > 0)
+    if duration_observations is None:
+        duration_observations = int(float(group.get("activeMs") or 0) > 0)
+    if task_observations is None:
+        task_observations = sum(
+            int(group.get(key) or 0)
+            for key in ("completedTasks", "abortedTasks", "incompleteTasks")
+        )
+    if metric == "shortBurn" and int(short_observations or 0) <= 0:
+        return None
+    if metric == "weeklyBurn" and int(weekly_observations or 0) <= 0:
+        return None
+    if metric == "activeMs" and int(duration_observations or 0) <= 0:
+        return None
+    if metric in {
+        "workTokens", "completedTasks", "edits", "filesChanged", "tests", "commands",
+    } and int(task_observations or 0) <= 0:
+        return None
+    return float(group.get(metric) or 0)
 
 
 def build_head_to_head(
@@ -460,13 +696,13 @@ def build_head_to_head(
     for index, group in enumerate(selected):
         metrics = {}
         for metric in _HEAD_TO_HEAD_METRICS:
-            value = float(group.get(metric) or 0)
-            baseline_value = float((baseline or {}).get(metric) or 0)
-            delta = value - baseline_value
+            value = _comparison_metric_value(group, metric)
+            baseline_value = _comparison_metric_value(baseline or {}, metric)
+            delta = value - baseline_value if value is not None and baseline_value is not None else None
             metrics[metric] = {
                 "value": value,
                 "delta": delta,
-                "percent": (delta * 100 / baseline_value) if baseline_value else None,
+                "percent": (delta * 100 / baseline_value) if delta is not None and baseline_value else None,
             }
         normalized = group.get("normalized") or {}
         baseline_normalized = (baseline or {}).get("normalized") or {}
@@ -474,13 +710,15 @@ def build_head_to_head(
             ("tokensPerTask", "tokensPerCompletedTask"),
             ("tasksPerMillion", "tasksPerMillionTokens"),
         ):
-            value = float(normalized.get(source_key) or 0)
-            baseline_value = float(baseline_normalized.get(source_key) or 0)
-            delta = value - baseline_value
+            raw_value = normalized.get(source_key)
+            raw_baseline = baseline_normalized.get(source_key)
+            value = float(raw_value) if raw_value is not None else None
+            baseline_value = float(raw_baseline) if raw_baseline is not None else None
+            delta = value - baseline_value if value is not None and baseline_value is not None else None
             metrics[output_key] = {
                 "value": value,
                 "delta": delta,
-                "percent": (delta * 100 / baseline_value) if baseline_value else None,
+                "percent": (delta * 100 / baseline_value) if delta is not None and baseline_value else None,
             }
         rows.append({
             "group": group,
@@ -494,8 +732,11 @@ def productivity_density_csv(view: dict) -> str:
     """Export model-only raw density metrics; never include account labels."""
     output = io.StringIO(newline="")
     fields = (
-        "provider", "model", "effort", "tokens", "active_hours", "short_burn",
-        "weekly_burn", "tasks_completed", "tasks_aborted", "edits", "files",
+        "provider", "model", "effort", "aggregation", "provider_accounts",
+        "attributed_provider_tokens", "task_attributed_tokens", "work_tokens", "active_hours",
+        "short_burn", "short_burn_intervals", "weekly_burn", "weekly_burn_intervals",
+        "tasks_completed", "tasks_aborted", "tasks_incomplete", "edits", "unique_files",
+        "file_touches",
         "lines_added", "lines_deleted", "tests", "tests_passed", "commands",
         "tool_calls", "tool_errors", "rollbacks", "compactions", "work_scope",
     )
@@ -506,13 +747,22 @@ def productivity_density_csv(view: dict) -> str:
             "provider": group.get("provider", ""),
             "model": group.get("modelName", ""),
             "effort": group.get("reasoningEffortName", ""),
-            "tokens": group.get("totalTokens", 0),
+            "aggregation": group.get("aggregationMode", "combined"),
+            "provider_accounts": group.get("providerAccountCount", 1),
+            "attributed_provider_tokens": group.get("totalTokens", 0),
+            "task_attributed_tokens": group.get("observedTokens", 0),
+            "work_tokens": group.get("workTokens", 0),
             "active_hours": round(float(group.get("activeMs", 0)) / 3_600_000, 3),
             "short_burn": round(float(group.get("shortBurn", 0)), 3),
+            "short_burn_intervals": group.get("shortBurnObservations", 0),
             "weekly_burn": round(float(group.get("weeklyBurn", 0)), 3),
+            "weekly_burn_intervals": group.get("weeklyBurnObservations", 0),
             "tasks_completed": group.get("completedTasks", 0),
             "tasks_aborted": group.get("abortedTasks", 0),
-            "edits": group.get("edits", 0), "files": group.get("filesChanged", 0),
+            "tasks_incomplete": group.get("incompleteTasks", 0),
+            "edits": group.get("edits", 0),
+            "unique_files": group.get("filesChanged", 0),
+            "file_touches": group.get("fileTouches", 0),
             "lines_added": group.get("linesAdded", 0), "lines_deleted": group.get("linesDeleted", 0),
             "tests": group.get("tests", 0), "tests_passed": group.get("testsPassed", 0),
             "commands": group.get("commands", 0), "tool_calls": group.get("toolCalls", 0),

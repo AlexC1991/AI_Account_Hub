@@ -64,7 +64,7 @@ and **Restore comparison** returns to the previous mixed-model roster.
 | Community comparisons | Sharing controls |
 |---|---|
 | <img src="screenshots/statistics-community.png" alt="Community model comparison workspace with ranked results and an efficiency map"> | <img src="screenshots/community-sharing.png" alt="Community sharing popover with consent, upload schedule, preview, settings, and withdrawal controls"> |
-| Privacy-thresholded model and reasoning cohorts can be explored as dots, lines, or vertical bars without producing a universal quality score. | Sharing is off by default and remains inspectable and reversible after opt-in. |
+| Privacy-thresholded model and reasoning cohorts can be explored as data-positioned dots, lines, or vertical bars without producing a universal quality score. | Sharing is off by default and remains inspectable and reversible after opt-in. |
 
 ### Background Awareness
 
@@ -173,6 +173,10 @@ Statistics passively reads numeric metadata exposed by local Codex and Claude
 Code history. It can show model and reasoning usage, token categories, completed
 tasks, edits, files, tests, commands, active time, and measured movement through
 5-hour and weekly limits.
+
+The token-mix chart folds separately exposed reasoning tokens into **Output**
+for a fair cross-provider visual. Raw analytics retain the provider's separate
+reasoning counter wherever it is available.
 
 It is a personal real-world usage record, not a synthetic benchmark:
 
@@ -306,7 +310,7 @@ command payloads, tool output, raw file paths, email addresses, or account names
 
 ## Platform Support
 
-Version 1.1 is Windows-first. Much of the Qt UI and provider discovery layer
+The 1.1 series is Windows-first. Much of the Qt UI and provider discovery layer
 is portable, but process control, packaged-resource paths, state readers, tray
 placement, and browser-session handling need native adapters and testing before
 macOS or Linux can be called supported.

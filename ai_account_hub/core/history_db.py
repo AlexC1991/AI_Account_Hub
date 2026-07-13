@@ -16,6 +16,20 @@ _RETENTION_DAYS = 400
 _last_retention_day = ""
 
 
+def _ensure_column(
+    connection: sqlite3.Connection,
+    table: str,
+    column: str,
+    declaration: str,
+) -> None:
+    """Add one backwards-compatible column to an existing local database."""
+    columns = {
+        str(row[1]) for row in connection.execute(f"pragma table_info({table})")
+    }
+    if column not in columns:
+        connection.execute(f"alter table {table} add column {column} {declaration}")
+
+
 def _prune_history_retention(connection: sqlite3.Connection) -> None:
     """Bound numeric history growth while preserving the 365-day UI range."""
     global _last_retention_day
@@ -65,9 +79,11 @@ def init_history_db() -> None:
                 short_used_percent real,
                 short_left_percent real,
                 short_reset_utc text,
+                short_label text,
                 weekly_used_percent real,
                 weekly_left_percent real,
                 weekly_reset_utc text,
+                weekly_label text,
                 weekly_estimate_utc text,
                 reset_credits_available text,
                 limit_reached_type text,
@@ -78,6 +94,8 @@ def init_history_db() -> None:
             create index if not exists idx_limit_history_profile on limit_history(profile_id);
             """
         )
+        _ensure_column(connection, "limit_history", "short_label", "text")
+        _ensure_column(connection, "limit_history", "weekly_label", "text")
         _prune_history_retention(connection)
         connection.commit()
     finally:
@@ -171,10 +189,14 @@ def record_profile_history(profile: dict, refresh_reason: str = "refresh") -> No
             """
             insert or ignore into limit_history (
                 profile_id, profile_name, provider, refreshed_at_utc, refresh_reason, state,
-                short_used_percent, short_left_percent, short_reset_utc,
-                weekly_used_percent, weekly_left_percent, weekly_reset_utc, weekly_estimate_utc,
+                short_used_percent, short_left_percent, short_reset_utc, short_label,
+                weekly_used_percent, weekly_left_percent, weekly_reset_utc, weekly_label,
+                weekly_estimate_utc,
                 reset_credits_available, limit_reached_type, last_error
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict(profile_id, refreshed_at_utc, refresh_reason) do update set
+                short_label = excluded.short_label,
+                weekly_label = excluded.weekly_label
             """,
             (
                 pid,
@@ -186,9 +208,11 @@ def record_profile_history(profile: dict, refresh_reason: str = "refresh") -> No
                 sanitize_float(profile.get("shortLimitUsedPercent")),
                 percent_left(profile.get("shortLimitUsedPercent")),
                 iso_from_value(profile.get("shortLimitResetUtc")),
+                str(profile.get("shortLimitLabel") or ""),
                 sanitize_float(profile.get("weeklyLimitUsedPercent")),
                 percent_left(profile.get("weeklyLimitUsedPercent")),
                 iso_from_value(profile.get("weeklyLimitResetUtc")),
+                str(profile.get("weeklyLimitLabel") or ""),
                 iso_from_value(weekly_reset),
                 str(profile.get("resetCreditsAvailable") or ""),
                 str(profile.get("limitReachedType") or ""),
@@ -281,8 +305,8 @@ def history_limit_entries(
         return []
     query = (
         "select profile_id, provider, refreshed_at_utc, refresh_reason, state, "
-        "short_used_percent, short_left_percent, short_reset_utc, "
-        "weekly_used_percent, weekly_left_percent, weekly_reset_utc, "
+        "short_used_percent, short_left_percent, short_reset_utc, short_label, "
+        "weekly_used_percent, weekly_left_percent, weekly_reset_utc, weekly_label, "
         "weekly_estimate_utc, reset_credits_available, limit_reached_type "
         "from limit_history"
     )
@@ -311,9 +335,11 @@ def history_limit_entries(
             "shortUsedPercent": row["short_used_percent"],
             "shortLeftPercent": row["short_left_percent"],
             "shortResetUtc": str(row["short_reset_utc"] or ""),
+            "shortLabel": str(row["short_label"] or ""),
             "weeklyUsedPercent": row["weekly_used_percent"],
             "weeklyLeftPercent": row["weekly_left_percent"],
             "weeklyResetUtc": str(row["weekly_reset_utc"] or ""),
+            "weeklyLabel": str(row["weekly_label"] or ""),
             "weeklyEstimateUtc": str(row["weekly_estimate_utc"] or ""),
             "resetCreditsAvailable": str(row["reset_credits_available"] or ""),
             "limitReachedType": str(row["limit_reached_type"] or ""),

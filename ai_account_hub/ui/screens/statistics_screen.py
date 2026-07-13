@@ -121,6 +121,17 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
         self.range_filter.setFixedWidth(130)
         self.range_filter.currentIndexChanged.connect(self._filter_changed)
         filters.addWidget(self.range_filter)
+        filters.addWidget(_label("Aggregation", "sectionLabel"))
+        self.aggregation_filter = QComboBox()
+        self.aggregation_filter.addItem("Combined totals", "combined")
+        self.aggregation_filter.addItem("Average per provider account", "per_provider_account")
+        self.aggregation_filter.setFixedWidth(220)
+        self.aggregation_filter.setToolTip(
+            "Combined shows the whole selected account pool. Average divides each provider by "
+            "the number of its accounts with usage in this range."
+        )
+        self.aggregation_filter.currentIndexChanged.connect(self._filter_changed)
+        filters.addWidget(self.aggregation_filter)
         filters.addStretch(1)
         self.scan_spinner = Spinner(self._tm.tokens["accent"], size=14)
         self.scan_spinner.setVisible(False)
@@ -172,7 +183,7 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
         kpis.setSpacing(0)
         self.tiles: dict[str, StatTile] = {}
         tile_specs = (
-            ("tokens", "Model tokens"), ("models", "Models used"),
+            ("tokens", "Attributed tokens"), ("models", "Models used"),
             ("cache", "Context reuse"), ("tasks", "Completed tasks"),
             ("short", "5h usage movement"), ("weekly", "Weekly usage movement"),
         )
@@ -270,12 +281,12 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
         self.bottom_view.addItem("Recent work", "journal")
         comparison_header.addWidget(self.bottom_view)
         comparison_layout.addLayout(comparison_header)
-        self.comparison = QTableWidget(0, 12)
+        self.comparison = QTableWidget(0, 13)
         self.comparison.setMinimumWidth(0)
         self.comparison.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         self.comparison.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.comparison.setHorizontalHeaderLabels((
-            "Model", "Reasoning", "Tokens", "Cache reuse", "Tasks", "Edits", "Files",
+            "Model", "Reasoning", "Attributed tokens", "Work tokens", "Cache reuse", "Tasks", "Edits", "Unique files",
             "Tests", "Commands", "Active", "5h burn", "Weekly burn",
         ))
         self.comparison.verticalHeader().setVisible(False)
@@ -286,7 +297,7 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
         self.comparison.setMinimumHeight(300)
         comparison_table_header = self.comparison.horizontalHeader()
         comparison_table_header.setSectionResizeMode(0, QHeaderView.Stretch)
-        for column, width in enumerate((86, 86, 74, 58, 58, 58, 58, 74, 76, 78, 82), 1):
+        for column, width in enumerate((86, 96, 82, 74, 58, 58, 68, 58, 74, 76, 78, 82), 1):
             comparison_table_header.setSectionResizeMode(column, QHeaderView.Fixed)
             self.comparison.setColumnWidth(column, width)
         comparison_layout.addWidget(self.comparison)
@@ -295,7 +306,7 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
         self.journal.setMinimumHeight(300)
         self.journal.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         self.journal.setHorizontalHeaderLabels((
-            "Day", "Model", "Shape", "Status", "Tokens", "Active", "Edits", "Files", "Tests / commands",
+            "Day", "Model", "Shape", "Status", "Task tokens", "Active", "Edits", "Files", "Tests / commands",
         ))
         self.journal.verticalHeader().setVisible(False)
         self.journal.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -452,13 +463,13 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
         )
         compare_table_header.addWidget(compare_table_copy)
         compare_table_layout.addLayout(compare_table_header)
-        self.compare_table = QTableWidget(0, 13)
+        self.compare_table = QTableWidget(0, 14)
         self.compare_table.setMinimumWidth(0)
         self.compare_table.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         self.compare_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.compare_table.setHorizontalHeaderLabels((
-            "Model", "Reasoning", "Tokens", "Tasks", "Edits", "Files", "Tests",
-            "Commands", "Active", "5h burn", "Weekly burn", "Tokens / task", "Tasks / 1M",
+            "Model", "Reasoning", "Attributed tokens", "Work tokens", "Tasks", "Edits", "Unique files", "Tests",
+            "Commands", "Active", "5h burn", "Weekly burn", "Work tokens / task", "Tasks / 1M work",
         ))
         self.compare_table.verticalHeader().setVisible(False)
         self.compare_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -621,7 +632,7 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
         layout.addLayout(header)
         table = QTableWidget(0, 9)
         table.setHorizontalHeaderLabels((
-            "Day", "Model", "Work type", "Result", "Tokens", "Time",
+            "Day", "Model", "Work type", "Result", "Task tokens", "Time",
             "Edits", "Files", "Tests / commands",
         ))
         table.verticalHeader().setVisible(False)
@@ -655,6 +666,7 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
                 button.style().polish(button)
         community = section == "community"
         self.account_filter.setEnabled(not community)
+        self.aggregation_filter.setEnabled(not community)
         self.account_filter.setToolTip(
             "Community results are anonymous and are not tied to a local account."
             if community else ""
@@ -714,6 +726,16 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
         self.account_filter.blockSignals(True)
         self.account_filter.clear()
         self.account_filter.addItem("All visible accounts", "all")
+        visible_providers = {
+            hub_core.provider_key(profile)
+            for profile in self._profiles
+            if not bool(profile.get("hidden"))
+            and hub_core.provider_key(profile) in {"codex", "claude"}
+        }
+        if "codex" in visible_providers:
+            self.account_filter.addItem("All Codex accounts", "provider:codex")
+        if "claude" in visible_providers:
+            self.account_filter.addItem("All Claude accounts", "provider:claude")
         for profile in self._profiles:
             if not bool(profile.get("hidden")) and hub_core.provider_key(profile) in {"codex", "claude"}:
                 self.account_filter.addItem(str(profile.get("name") or "Account"), hub_core.profile_id(profile))
@@ -782,6 +804,7 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
             self._snapshot,
             account_id=str(self.account_filter.currentData() or "all"),
             days=int(self.range_filter.currentData() or 30),
+            aggregation_mode=str(self.aggregation_filter.currentData() or "combined"),
         )
         self._view = view
         self._render()
@@ -791,10 +814,17 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
     def _selected_profiles(self) -> list[dict]:
         """Return the account-filter input without changing model grouping."""
         selected = str(self.account_filter.currentData() or "all")
+        selected_provider = (
+            selected.split(":", 1)[1] if selected.startswith("provider:") else ""
+        )
         return [
             profile for profile in self._profiles
             if not bool(profile.get("hidden"))
-            and (selected == "all" or hub_core.profile_id(profile) == selected)
+            and (
+                selected == "all"
+                or hub_core.profile_id(profile) == selected
+                or (selected_provider and hub_core.provider_key(profile) == selected_provider)
+            )
         ]
 
     def _visible_groups(self) -> list[dict]:
@@ -913,23 +943,35 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
                 str(item.get("modelName") or "").lower(),
             ))
         input_side = sum(
-            int(group.get("inputTokens") or 0)
-            + int(group.get("cachedInputTokens") or 0)
-            + int(group.get("cacheCreationTokens") or 0)
+            float(group.get("inputTokens") or 0)
+            + float(group.get("cachedInputTokens") or 0)
+            + float(group.get("cacheCreationTokens") or 0)
             for group in groups
         )
-        cached = sum(int(group.get("cachedInputTokens") or 0) for group in groups)
+        cached = sum(float(group.get("cachedInputTokens") or 0) for group in groups)
         cache_percent = cached * 100 / input_side if input_side else None
         summary = {
-            "tokens": sum(int(group.get("totalTokens") or 0) for group in groups),
-            "tasks": sum(int(group.get("completedTasks") or 0) for group in groups),
-            "edits": sum(int(group.get("edits") or 0) for group in groups),
-            "tests": sum(int(group.get("tests") or 0) for group in groups),
+            "tokens": sum(float(group.get("totalTokens") or 0) for group in groups),
+            "tasks": sum(float(group.get("completedTasks") or 0) for group in groups),
+            "edits": sum(float(group.get("edits") or 0) for group in groups),
+            "tests": sum(float(group.get("tests") or 0) for group in groups),
             "short": sum(float(group.get("shortBurn") or 0) for group in groups),
             "weekly": sum(float(group.get("weeklyBurn") or 0) for group in groups),
+            "taskObservations": sum(int(group.get("taskObservations") or 0) for group in groups),
+            "shortObservations": sum(int(group.get("shortBurnObservations") or 0) for group in groups),
+            "weeklyObservations": sum(int(group.get("weeklyBurnObservations") or 0) for group in groups),
         }
+        average_mode = self._view.get("aggregationMode") == "per_provider_account"
+        provider_counts = self._view.get("providerAccountCounts") or {}
+        aggregation_note = (
+            "Provider-account mean: "
+            + ", ".join(f"{provider.title()} divided by {count}" for provider, count in provider_counts.items())
+            if average_mode else
+            "Combined across the selected account pool"
+        )
         self.tiles["tokens"].set_data(
-            _format_tokens(summary["tokens"]), "Tokens reported in local provider history"
+            _format_tokens(summary["tokens"]),
+            f"Provider totals attributed to used model settings | {aggregation_note}",
         )
         self.tiles["models"].set_data(
             str(len(base_groups)), f"{len(groups)} observed model/reasoning configurations"
@@ -938,12 +980,17 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
             "Not exposed" if cache_percent is None else f"{cache_percent:.0f}%",
             "Cached input share where the provider exposes it",
         )
-        self.tiles["tasks"].set_data(f"{summary['tasks']:,}", "Observed completed coding tasks")
+        self.tiles["tasks"].set_data(
+            _format_number(summary["tasks"] if summary["taskObservations"] else None),
+            "Deduplicated completed coding tasks",
+        )
         self.tiles["short"].set_data(
-            _format_points(summary["short"]), "Measured between snapshots less than 20m apart"
+            _format_points(summary["short"] if summary["shortObservations"] else None),
+            "Measured between snapshots less than 20m apart",
         )
         self.tiles["weekly"].set_data(
-            _format_points(summary["weekly"]), "Measured increases; reset decreases excluded"
+            _format_points(summary["weekly"] if summary["weeklyObservations"] else None),
+            "Measured increases; reset decreases excluded",
         )
         self.density.set_groups(base_groups)
         self._fill_comparison(model_base_groups)
@@ -1037,28 +1084,38 @@ class StatisticsScreen(StatisticsCompareMixin, StatisticsCommunityMixin, QWidget
             model_item.setToolTip(
                 f"{group.get('modelName') or 'Model'}\n"
                 f"Reasoning: {reasoning_text}\n"
-                f"Source: {_friendly_work_scope(group.get('workScope'))}"
+                f"Source: {_friendly_work_scope(group.get('workScope'))}\n"
+                f"Token attribution: {str(group.get('tokenAttribution') or 'unknown').replace('_', ' ')}\n"
+                f"Aggregation: {'average across provider accounts' if group.get('aggregationMode') == 'per_provider_account' else 'combined total'}"
             )
             self.comparison.setItem(row_index, 0, model_item)
             self.comparison.setItem(row_index, 1, QTableWidgetItem(reasoning_text))
             input_side = (
-                int(group.get("inputTokens") or 0)
-                + int(group.get("cachedInputTokens") or 0)
-                + int(group.get("cacheCreationTokens") or 0)
+                float(group.get("inputTokens") or 0)
+                + float(group.get("cachedInputTokens") or 0)
+                + float(group.get("cacheCreationTokens") or 0)
             )
-            cache = int(group.get("cachedInputTokens") or 0)
+            cache = float(group.get("cachedInputTokens") or 0)
             cache_text = "Not exposed" if not input_side else f"{cache * 100 / input_side:.0f}%"
+            task_available = bool(group.get("taskObservations"))
             values = (
                 _format_tokens(group.get("totalTokens", 0)),
+                _format_tokens(group.get("workTokens", 0))
+                if task_available else "Not exposed",
                 cache_text,
-                f"{int(group.get('completedTasks') or 0):,}",
-                f"{int(group.get('edits') or 0):,}",
-                f"{int(group.get('filesChanged') or 0):,}",
-                f"{int(group.get('tests') or 0):,}",
-                f"{int(group.get('commands') or 0):,}",
-                _format_duration(group.get("activeMs")),
-                _format_points(group.get("shortBurn", 0)),
-                _format_points(group.get("weeklyBurn", 0)),
+                _format_number(group.get("completedTasks")) if task_available else "Not exposed",
+                _format_number(group.get("edits")) if task_available else "Not exposed",
+                _format_number(group.get("filesChanged")) if task_available else "Not exposed",
+                _format_number(group.get("tests")) if task_available else "Not exposed",
+                _format_number(group.get("commands")) if task_available else "Not exposed",
+                _format_duration(group.get("activeMs"))
+                if group.get("durationObservations") else "Not exposed",
+                _format_points(
+                    group.get("shortBurn") if group.get("shortBurnObservations") else None
+                ),
+                _format_points(
+                    group.get("weeklyBurn") if group.get("weeklyBurnObservations") else None
+                ),
             )
             for column, value in enumerate(values, 2):
                 item = QTableWidgetItem(value)

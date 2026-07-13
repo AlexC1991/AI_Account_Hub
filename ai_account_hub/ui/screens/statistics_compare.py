@@ -331,25 +331,34 @@ class StatisticsCompareMixin:
 
     @staticmethod
     def _comparison_cell(metric: str, item: dict, baseline: bool) -> tuple[str, str]:
-        value = float(item.get("value") or 0)
-        delta = float(item.get("delta") or 0)
-        if metric == "totalTokens":
+        raw_value = item.get("value")
+        raw_delta = item.get("delta")
+        if raw_value is None:
+            return "Not exposed", "This metric is not available for the selected model and range."
+        value = float(raw_value)
+        delta = float(raw_delta) if raw_delta is not None else None
+        if metric in {"totalTokens", "workTokens"}:
             absolute = _format_tokens(value)
-            delta_text = _format_tokens(abs(delta))
+            delta_text = _format_tokens(abs(delta)) if delta is not None else "Not comparable"
         elif metric == "activeMs":
             absolute = _format_duration(value)
-            delta_text = _format_duration(abs(delta))
+            delta_text = _format_duration(abs(delta)) if delta is not None else "Not comparable"
         elif metric in {"shortBurn", "weeklyBurn"}:
             absolute = _format_points(value)
-            delta_text = _format_points(abs(delta))
+            delta_text = _format_points(abs(delta)) if delta is not None else "Not comparable"
         elif metric in {"tokensPerTask", "tasksPerMillion"}:
             absolute = _format_number(value, 1)
-            delta_text = _format_number(abs(delta), 1)
+            delta_text = _format_number(abs(delta), 1) if delta is not None else "Not comparable"
         else:
-            absolute = f"{int(value):,}"
-            delta_text = f"{int(abs(delta)):,}"
+            absolute = _format_number(value)
+            delta_text = _format_number(abs(delta), 1) if delta is not None else "Not comparable"
         if baseline:
             return f"{absolute}\nBaseline", f"Observed value: {absolute}\nComparison role: Baseline"
+        if delta is None:
+            return (
+                f"{absolute}\nNot comparable",
+                f"Observed value: {absolute}\nThe baseline does not expose this metric.",
+            )
         sign = "+" if delta >= 0 else "-"
         difference = "0" if delta == 0 else f"{sign}{delta_text}"
         return (
@@ -361,7 +370,7 @@ class StatisticsCompareMixin:
         rows = list(head_to_head.get("rows") or [])
         self.compare_table.setRowCount(len(rows))
         metrics = (
-            "totalTokens", "completedTasks", "edits", "filesChanged", "tests",
+            "totalTokens", "workTokens", "completedTasks", "edits", "filesChanged", "tests",
             "commands", "activeMs", "shortBurn", "weeklyBurn",
             "tokensPerTask", "tasksPerMillion",
         )

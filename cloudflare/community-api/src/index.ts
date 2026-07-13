@@ -524,6 +524,10 @@ async function publishCommunityModels(env: Env): Promise<JsonObject> {
     "COUNT(DISTINCT receipt_id) AS submissions FROM daily_contributions " +
     "WHERE period_start >= ?1",
   ).bind(cutoff).first<{ contributors: number; submissions: number }>();
+  const providerCounts = await env.DB.prepare(
+    "SELECT provider, COUNT(DISTINCT installation_id) AS contributors " +
+    "FROM daily_contributions WHERE period_start >= ?1 GROUP BY provider",
+  ).bind(cutoff).all<{ provider: string; contributors: number }>();
   const rollups = await env.DB.prepare(
     "SELECT period_start, provider, model_id, reasoning_effort, total_tokens, " +
     "completed_tasks, active_ms, edits, files_changed, tests, commands, short_burn, " +
@@ -562,7 +566,13 @@ async function publishCommunityModels(env: Env): Promise<JsonObject> {
         shortBurn: 0,
         weeklyBurn: 0,
         observations: 0,
+        contributorDays: 0,
         contributors,
+        aggregation: "per-contributor-day mean",
+        _weightedTokens: 0,
+        _weightedTasks: 0,
+        _weightedShortBurn: 0,
+        _weightedWeeklyBurn: 0,
         days: {},
       };
       groups.set(key, group);
@@ -571,27 +581,45 @@ async function publishCommunityModels(env: Env): Promise<JsonObject> {
     const tokens = Number(row.total_tokens || 0);
     const shortBurn = Number(row.short_burn || 0);
     const weeklyBurn = Number(row.weekly_burn || 0);
+    const dayContributors = Math.max(1, Number(row.contributor_count || 0));
+    const meanTokens = ratio(tokens, dayContributors);
+    const meanTasks = ratio(tasks, dayContributors);
+    const meanShortBurn = ratio(shortBurn, dayContributors);
+    const meanWeeklyBurn = ratio(weeklyBurn, dayContributors);
     (group.days as JsonObject)[row.period_start] = {
-      tokens,
-      tasks,
+      tokens: meanTokens,
+      tasks: meanTasks,
+      shortBurn: meanShortBurn,
+      weeklyBurn: meanWeeklyBurn,
       tasksPerSession: shortBurn > 0 ? ratio(tasks * 100, shortBurn) : 0,
       tokensPerTask: ratio(tokens, tasks),
       weeklyBurnPerTask: ratio(weeklyBurn, tasks),
-      observations: Number(row.observations || 0),
+      observations: tasks,
+      contributorDays: Number(row.observations || 0),
+      contributors: dayContributors,
     };
-    group.totalTokens = Number(group.totalTokens) + tokens;
-    group.completedTasks = Number(group.completedTasks) + tasks;
-    group.shortBurn = Number(group.shortBurn) + shortBurn;
-    group.weeklyBurn = Number(group.weeklyBurn) + weeklyBurn;
-    group.observations = Number(group.observations) + Number(row.observations || 0);
+    // Absolute chart values represent a typical contributing installation on
+    // each day. The hidden weighted sums retain one equal installation-day
+    // contribution for ratios, so neither extra provider accounts nor changing
+    // daily cohort size silently inflate the public comparison.
+    group.totalTokens = Number(group.totalTokens) + meanTokens;
+    group.completedTasks = Number(group.completedTasks) + meanTasks;
+    group.shortBurn = Number(group.shortBurn) + meanShortBurn;
+    group.weeklyBurn = Number(group.weeklyBurn) + meanWeeklyBurn;
+    group.observations = Number(group.observations) + tasks;
+    group.contributorDays = Number(group.contributorDays) + Number(row.observations || 0);
+    group._weightedTokens = Number(group._weightedTokens) + tokens;
+    group._weightedTasks = Number(group._weightedTasks) + tasks;
+    group._weightedShortBurn = Number(group._weightedShortBurn) + shortBurn;
+    group._weightedWeeklyBurn = Number(group._weightedWeeklyBurn) + weeklyBurn;
   }
 
   const publishedGroups = [...groups.values()];
   for (const group of publishedGroups) {
-    const tasks = Number(group.completedTasks || 0);
-    const tokens = Number(group.totalTokens || 0);
-    const shortBurn = Number(group.shortBurn || 0);
-    const weeklyBurn = Number(group.weeklyBurn || 0);
+    const tasks = Number(group._weightedTasks || 0);
+    const tokens = Number(group._weightedTokens || 0);
+    const shortBurn = Number(group._weightedShortBurn || 0);
+    const weeklyBurn = Number(group._weightedWeeklyBurn || 0);
     group.tasksPerSession = shortBurn > 0 ? ratio(tasks * 100, shortBurn) : 0;
     group.tokensPerTask = ratio(tokens, tasks);
     group.weeklyBurnPerTask = ratio(weeklyBurn, tasks);
@@ -600,6 +628,10 @@ async function publishCommunityModels(env: Env): Promise<JsonObject> {
       tasksPerMillionTokens: tokens > 0 ? ratio(tasks * 1_000_000, tokens) : 0,
       tasksPerSession: group.tasksPerSession,
     };
+    delete group._weightedTokens;
+    delete group._weightedTasks;
+    delete group._weightedShortBurn;
+    delete group._weightedWeeklyBurn;
   }
   publishedGroups.sort((left, right) => Number(right.observations) - Number(left.observations));
 
@@ -613,8 +645,13 @@ async function publishCommunityModels(env: Env): Promise<JsonObject> {
     collectionContributors: Number(collection?.contributors || 0),
     collectionSubmissions: Number(collection?.submissions || 0),
     contributors: Number(collection?.contributors || 0),
+    providerContributors: Object.fromEntries(
+      providerCounts.results
+        .filter((row) => Number(row.contributors || 0) >= minimum)
+        .map((row) => [row.provider, Number(row.contributors || 0)]),
+    ),
     observedTasks: publishedGroups.reduce(
-      (total, group) => total + Number(group.completedTasks || 0), 0,
+      (total, group) => total + Number(group.observations || 0), 0,
     ),
     groups: publishedGroups,
   };
@@ -622,7 +659,7 @@ async function publishCommunityModels(env: Env): Promise<JsonObject> {
   while (encoder.encode(body).byteLength > MAX_PUBLIC_RESPONSE_BYTES && publishedGroups.length > 0) {
     publishedGroups.pop();
     payload.observedTasks = publishedGroups.reduce(
-      (total, group) => total + Number(group.completedTasks || 0), 0,
+      (total, group) => total + Number(group.observations || 0), 0,
     );
     body = JSON.stringify(payload);
   }

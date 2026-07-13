@@ -6,7 +6,6 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
@@ -30,157 +29,23 @@ from ai_account_hub.core.benchmark_view import (
     productivity_density_csv,
 )
 from ai_account_hub.core.model_analytics import reconcile_claude_history
+from ai_account_hub.ui.screens.statistics_metrics import (
+    COMPARE_BAR_VIEWS,
+    COMPARE_LINE_VIEWS,
+    community_scatter_axes,
+    METRIC_COLORS,
+    MODEL_BAR_VIEWS,
+    MODEL_COLORS,
+    MODEL_LINE_VIEWS,
+    OVERVIEW_BAR_VIEWS,
+    OVERVIEW_LINE_VIEWS,
+    PRODUCTIVITY_BAR_VIEWS,
+    PRODUCTIVITY_LINE_VIEWS,
+    scatter_domain,
+    TOKEN_SEGMENTS,
+    metric_label as _metric_label,
+)
 from ai_account_hub.ui.widgets import ElidedLabel, Spinner, make_button
-
-
-MODEL_COLORS = (
-    "#45a3ff", "#55c47d", "#e2b93f", "#d47be8", "#ef8354", "#42b8c5",
-    "#8b9bea", "#df6c88", "#82b05a", "#bd8b62", "#7ac6a6", "#b58ce2",
-)
-METRIC_COLORS = {
-    "edits": "#45a3ff", "filesChanged": "#55c47d", "tests": "#e2b93f",
-    "commands": "#d47be8", "taskTokenMinimum": "#45b8ce",
-    "taskTokenQ1": "#55c47d", "taskTokenMedian": "#e2b93f",
-    "taskTokenQ3": "#d47be8", "taskTokenMaximum": "#ef8354",
-    "durationMinimum": "#45b8ce", "durationQ1": "#55c47d",
-    "durationMedian": "#e2b93f", "durationQ3": "#d47be8",
-    "durationMaximum": "#ef8354",
-}
-METRIC_LABELS = {
-    "edits": "Edits", "filesChanged": "Files", "tests": "Tests",
-    "commands": "Commands", "taskTokenMinimum": "Minimum",
-    "taskTokenQ1": "Q1", "taskTokenMedian": "Median",
-    "taskTokenQ3": "Q3", "taskTokenMaximum": "Maximum",
-    "durationMinimum": "Minimum", "durationQ1": "Q1",
-    "durationMedian": "Median", "durationQ3": "Q3",
-    "durationMaximum": "Maximum",
-}
-DISPLAY_METRIC_LABELS = {
-    "totalTokens": "Tokens",
-    "completedTasks": "Completed tasks",
-    "shortBurn": "5h limit burn",
-    "weeklyBurn": "Weekly limit burn",
-    "edits": "Edits",
-    "filesChanged": "Files",
-    "tests": "Tests",
-    "commands": "Commands",
-    "activeMs": "Active time",
-    "tokensPerTask": "Tokens per completed task",
-    "tasksPerMillion": "Tasks per 1M tokens",
-    "tasksPerSession": "Tasks per 5h capacity",
-    "weeklyBurnPerTask": "Weekly burn per task",
-    "observations": "Observed tasks",
-    "inputTokens": "Input tokens",
-    "cachedInputTokens": "Cached input tokens",
-    "cacheCreationTokens": "Cache write tokens",
-    "reasoningTokens": "Reasoning tokens",
-    "outputTokens": "Output tokens (incl. thinking)",
-    "unclassifiedTokens": "Unclassified tokens",
-    "taskTokenMinimum": "Minimum task tokens",
-    "taskTokenQ1": "Task-token first quartile",
-    "taskTokenMedian": "Median task tokens",
-    "taskTokenQ3": "Task-token third quartile",
-    "taskTokenMaximum": "Maximum task tokens",
-    "durationMinimum": "Minimum task duration",
-    "durationQ1": "Task-duration first quartile",
-    "durationMedian": "Median task duration",
-    "durationQ3": "Task-duration third quartile",
-    "durationMaximum": "Maximum task duration",
-}
-TOKEN_SEGMENTS = (
-    ("inputTokens", "Input", "#45b8ce"),
-    ("cachedInputTokens", "Cached", "#55c47d"),
-    ("cacheCreationTokens", "Cache write", "#d8b044"),
-    # Reasoning is folded into output: Codex reports it separately but Anthropic
-    # bundles thinking into output_tokens, so a split slice unfairly shows Claude
-    # at 0 reasoning vs Codex's ~35%. One "Output (incl. thinking)" slice is fair.
-    ("outputTokens", "Output (incl. thinking)", "#e77f52"),
-    ("unclassifiedTokens", "Unclassified", "#84909a"),
-)
-LINE_CHART_VIEWS = (
-    ("Work tokens", "Work tokens over time", "Non-cache tokens (excludes cache re-reads)", "line", "workTokens", ()),
-    ("Completed tasks", "Completed tasks over time", "Completed work recorded for each model", "line", "completedTasks", ()),
-    ("5h limit burn", "5h limit burn over time", "Measured movement from trustworthy intervals", "line", "shortBurn", ()),
-    ("Weekly limit burn", "Weekly limit burn over time", "Positive movement with reset decreases excluded", "line", "weeklyBurn", ()),
-    ("Edits", "Edit activity over time", "Observed edit operations by model", "line", "edits", ()),
-    ("Files", "File activity over time", "Observed changed-file counts by model", "line", "filesChanged", ()),
-    ("Tests", "Test activity over time", "Observed test commands by model", "line", "tests", ()),
-    ("Commands", "Command activity over time", "Observed command activity by model", "line", "commands", ()),
-    ("Active time", "Active task time over time", "Time recorded in model sessions", "line", "activeMs", ()),
-)
-BAR_CHART_VIEWS = (
-    ("Completed work", "Completed work", "Task completions by used model", "bar", "completedTasks", ()),
-    ("Work tokens by model", "Work tokens by model", "Non-cache tokens; cache re-reads excluded", "bar", "workTokens", ()),
-    ("5h limit burn", "5h limit burn by model", "Measured percentage-point movement", "bar", "shortBurn", ()),
-    ("Weekly limit burn", "Weekly limit burn by model", "Reset decreases and long gaps excluded", "bar", "weeklyBurn", ()),
-    ("Token category mix", "Token category mix", "Input, cache, output (thinking folded in) and unclassified", "stack", "totalTokens", ()),
-    ("Engineering activity", "Engineering activity bundle", "Edits, files, tests and commands remain separate", "multi_bar", "", ("edits", "filesChanged", "tests", "commands")),
-    ("Tokens per task", "Tokens per completed task", "A resource ratio, not a quality score", "bar", "tokensPerTask", ()),
-    ("Tasks per 1M tokens", "Tasks per 1M tokens", "Observed completions normalized by tokens", "bar", "tasksPerMillion", ()),
-    ("Task token quartiles", "Task token distribution", "Minimum, quartiles, median and maximum", "multi_bar", "", ("taskTokenMinimum", "taskTokenQ1", "taskTokenMedian", "taskTokenQ3", "taskTokenMaximum")),
-    ("Task duration quartiles", "Task duration distribution", "Observed task-span quartiles", "multi_bar", "", ("durationMinimum", "durationQ1", "durationMedian", "durationQ3", "durationMaximum")),
-)
-
-OVERVIEW_LINE_VIEWS = tuple(
-    item for item in LINE_CHART_VIEWS
-    if item[0] in {"Token activity", "Completed tasks", "5h limit burn", "Weekly limit burn"}
-)
-OVERVIEW_BAR_VIEWS = tuple(
-    item for item in BAR_CHART_VIEWS
-    if item[0] in {"Completed work", "Tokens by model", "5h limit burn", "Weekly limit burn"}
-)
-MODEL_LINE_VIEWS = tuple(
-    item for item in LINE_CHART_VIEWS
-    if item[0] in {"Token activity", "Completed tasks", "Active time"}
-)
-MODEL_BAR_VIEWS = tuple(
-    item for item in BAR_CHART_VIEWS
-    if item[0] in {
-        "Token category mix", "Tokens per task", "Tasks per 1M tokens",
-        "Task token quartiles", "Task duration quartiles",
-    }
-)
-PRODUCTIVITY_LINE_VIEWS = tuple(
-    item for item in LINE_CHART_VIEWS
-    if item[0] in {"Edits", "Files", "Tests", "Commands", "Active time", "5h limit burn", "Weekly limit burn"}
-)
-PRODUCTIVITY_BAR_VIEWS = tuple(
-    item for item in BAR_CHART_VIEWS
-    if item[0] in {"Engineering activity", "5h limit burn", "Weekly limit burn", "Tokens per task", "Tasks per 1M tokens"}
-)
-COMPARE_LINE_VIEWS = tuple(
-    item for item in LINE_CHART_VIEWS
-    if item[0] in {
-        "Token activity", "Completed tasks", "Edits", "Files", "Tests",
-        "Commands", "Active time", "5h limit burn", "Weekly limit burn",
-    }
-)
-COMPARE_BAR_VIEWS = (
-    ("Work tokens", "Work tokens by model", "Non-cache totals from zero; differences use the baseline", "comparison_bar", "workTokens", ()),
-    ("Completed tasks", "Completed tasks by model", "Completed work totals from zero", "comparison_bar", "completedTasks", ()),
-    ("Edits", "Edits by model", "Observed edit totals from zero", "comparison_bar", "edits", ()),
-    ("Files", "Changed files by model", "Unique changed-file totals from zero", "comparison_bar", "filesChanged", ()),
-    ("Tests", "Tests by model", "Observed test totals from zero", "comparison_bar", "tests", ()),
-    ("Commands", "Commands by model", "Observed command totals from zero", "comparison_bar", "commands", ()),
-    ("Active time", "Active time by model", "Recorded session time from zero", "comparison_bar", "activeMs", ()),
-    ("5h limit burn", "5h limit burn by model", "Measured percentage-point movement from zero", "comparison_bar", "shortBurn", ()),
-    ("Weekly limit burn", "Weekly limit burn by model", "Measured percentage-point movement from zero", "comparison_bar", "weeklyBurn", ()),
-    ("Tokens per task", "Tokens per completed task", "Resources per completion from zero", "comparison_bar", "tokensPerTask", ()),
-    ("Tasks per 1M", "Tasks per 1M tokens", "Completion density from zero", "comparison_bar", "tasksPerMillion", ()),
-)
-
-
-def _metric_label(metric: object) -> str:
-    """Return readable UI copy for provider metric identifiers."""
-    key = str(metric or "").strip()
-    if not key:
-        return "Value"
-    known = DISPLAY_METRIC_LABELS.get(key) or METRIC_LABELS.get(key)
-    if known:
-        return known
-    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", key)
-    words = re.sub(r"[_-]+", " ", words)
-    return " ".join(words.split()).capitalize()
 
 
 def _friendly_work_scope(value: object) -> str:
@@ -270,6 +135,8 @@ def _format_number(value: float | int | None, decimals: int = 1) -> str:
 
 
 def _format_points(value: float | int | None) -> str:
+    if value is None:
+        return "Not exposed"
     amount = max(0.0, float(value or 0))
     return f"{amount:,.0f} pts" if amount >= 100 else f"{amount:,.1f} pts"
 
@@ -293,7 +160,7 @@ def _chart_rows(rows: list[dict], maximum: int | None = None) -> list[dict]:
     seen: set[str] = set()
     for row in rows:
         key = str(row.get("filterKey") or "").lower()
-        if key and key not in seen and int(row.get("totalTokens") or 0) > 0:
+        if key and key not in seen and float(row.get("totalTokens") or 0) > 0:
             output.append(row)
             seen.add(key)
     return output
@@ -322,10 +189,62 @@ def _metric_value(group: dict, metric: str) -> float:
     return float(group.get(metric) or 0)
 
 
+def _token_segment_value(group: dict, segment: str) -> float:
+    """Return mutually exclusive display categories for the token-mix chart."""
+    value = _metric_value(group, segment)
+    if segment == "outputTokens":
+        # OpenAI exposes reasoning as a subset of generated/output tokens while
+        # Anthropic does not split it. Fold only in this cross-provider visual;
+        # canonical analytics and exports retain the raw reasoning field.
+        value += _metric_value(group, "reasoningTokens")
+    return value
+
+
+def _metric_available(group: dict, metric: str) -> bool:
+    if metric == "tokensPerTask":
+        return (group.get("normalized") or {}).get("tokensPerCompletedTask") is not None
+    if metric == "tasksPerMillion":
+        return (group.get("normalized") or {}).get("tasksPerMillionTokens") is not None
+    if metric in {"shortBurn", "weeklyBurn"}:
+        observations = group.get(f"{metric}Observations")
+        return (
+            float(group.get(metric) or 0) > 0
+            if observations is None else int(observations or 0) > 0
+        )
+    if metric in {"activeMs", "durationMinimum", "durationQ1", "durationMedian", "durationQ3", "durationMaximum"}:
+        observations = group.get("durationObservations")
+        return (
+            float(group.get("activeMs") or 0) > 0
+            if observations is None else int(observations or 0) > 0
+        )
+    if metric.startswith("taskToken"):
+        return bool(group.get("taskTokenDistribution"))
+    if metric in {
+        "workTokens", "completedTasks", "edits", "filesChanged", "fileTouches",
+        "tests", "commands", "linesAdded", "linesDeleted",
+    }:
+        observations = group.get("taskObservations")
+        if observations is None:
+            observations = sum(
+                float(group.get(key) or 0)
+                for key in ("completedTasks", "abortedTasks", "incompleteTasks")
+            )
+        return float(observations or 0) > 0
+    return True
+
+
+def _day_available(bucket: dict, metric: str) -> bool:
+    if metric in {"shortBurn", "weeklyBurn"}:
+        observations = bucket.get(f"{metric}Observations")
+        return (
+            float(bucket.get(metric) or 0) > 0
+            if observations is None else int(observations or 0) > 0
+        )
+    return True
+
+
 def _day_value(bucket: dict, metric: str) -> float:
-    aliases = {
-        "totalTokens": "tokens", "completedTasks": "tasks", "filesChanged": "files",
-    }
+    aliases = {"totalTokens": "tokens"}
     return float(bucket.get(aliases.get(metric, metric)) or 0)
 
 
@@ -595,11 +514,7 @@ class BenchmarkChart(QWidget):
         try:
             day = dt.date.fromisoformat(raw_day).strftime("%d %b %Y")
         except ValueError:
-            day = (
-                _metric_label(raw_day)
-                if re.search(r"[a-z][A-Z]|[_-]", raw_day)
-                else raw_day
-            )
+            day = _metric_label(raw_day)
         value = payload.get("value", payload.get("tokens", 0))
         metric = _metric_label(payload.get("metricLabel") or "Tokens")
         formatted = _format_metric_value(
@@ -747,14 +662,21 @@ class BenchmarkChart(QWidget):
         painter.drawText(rect, Qt.AlignCenter, text)
 
     def _draw_line(self, painter: QPainter, plot: QRectF) -> None:
-        groups = self._active_groups()
+        groups = [
+            group for group in self._active_groups()
+            if _metric_available(group, self._metric)
+        ]
         days = sorted({day for group in groups for day in group.get("days", {})})
         if not days:
             return
-        raw_maximum = max(
-            [_day_value((group.get("days") or {}).get(day, {}), self._metric) for group in groups for day in days]
-            or [1]
-        ) or 1
+        values = [
+            _day_value(bucket, self._metric)
+            for group in groups
+            for day in days
+            for bucket in [(group.get("days") or {}).get(day, {})]
+            if _day_available(bucket, self._metric)
+        ]
+        raw_maximum = max(values or [1]) or 1
         maximum = self._visible_maximum(raw_maximum)
         self._draw_y_labels(painter, plot, maximum)
         painter.save()
@@ -764,7 +686,11 @@ class BenchmarkChart(QWidget):
             active = False
             for index, day in enumerate(days):
                 x = self._scaled_x(index, len(days), plot)
-                value = _day_value((group.get("days") or {}).get(day, {}), self._metric)
+                bucket = (group.get("days") or {}).get(day, {})
+                if not _day_available(bucket, self._metric):
+                    active = False
+                    continue
+                value = _day_value(bucket, self._metric)
                 y = plot.bottom() - value / maximum * plot.height()
                 point = QPointF(x, y)
                 path.moveTo(point) if not active else path.lineTo(point)
@@ -788,8 +714,12 @@ class BenchmarkChart(QWidget):
     def _draw_bar(self, painter: QPainter, plot: QRectF) -> None:
         groups = self._active_groups()
         metrics = self._segments or [self._metric]
-        values = [[_metric_value(group, metric) for metric in metrics] for group in groups]
-        maximum = self._visible_maximum(max([value for row in values for value in row] or [1]) or 1)
+        values = [[
+            _metric_value(group, metric) if _metric_available(group, metric) else None
+            for metric in metrics
+        ] for group in groups]
+        available = [value for row in values for value in row if value is not None]
+        maximum = self._visible_maximum(max(available or [1]) or 1)
         self._draw_y_labels(painter, plot, maximum)
         group_width = plot.width() / max(1, len(groups))
         bar_width = min(34.0, max(5.0, group_width * 0.7 / max(1, len(metrics))))
@@ -797,6 +727,14 @@ class BenchmarkChart(QWidget):
             center = plot.left() + group_width * (group_index + 0.5)
             for metric_index, (metric, value) in enumerate(zip(metrics, row)):
                 x = center - len(metrics) * bar_width / 2 + metric_index * bar_width
+                if value is None:
+                    painter.setPen(QColor(self._theme.tokens["text3"]))
+                    painter.drawText(
+                        QRectF(x - 5, plot.bottom() - 20, bar_width + 8, 18),
+                        Qt.AlignHCenter | Qt.AlignVCenter,
+                        "N/A",
+                    )
+                    continue
                 height = min(plot.height(), value / maximum * plot.height())
                 color = (
                     self._group_color(group)
@@ -829,9 +767,13 @@ class BenchmarkChart(QWidget):
         groups = self._active_groups()
         if not groups:
             return
-        baseline = _metric_value(groups[0], self._metric)
-        values = [_metric_value(group, self._metric) for group in groups]
-        maximum = self._visible_maximum(max(values or [1]) or 1)
+        values = [
+            _metric_value(group, self._metric)
+            if _metric_available(group, self._metric) else None
+            for group in groups
+        ]
+        baseline = values[0]
+        maximum = self._visible_maximum(max([value for value in values if value is not None] or [1]) or 1)
         tokens = self._theme.tokens
         self._draw_y_labels(painter, plot, maximum)
         label_metric = _metric_label(self._metric)
@@ -839,6 +781,24 @@ class BenchmarkChart(QWidget):
         bar_width = min(58.0, max(18.0, group_width * 0.46))
         for index, (group, value) in enumerate(zip(groups, values)):
             center = plot.left() + group_width * (index + 0.5)
+            if value is None:
+                painter.setPen(QColor(tokens["text3"]))
+                painter.drawText(
+                    QRectF(center - group_width / 2, plot.bottom() - 22, group_width, 18),
+                    Qt.AlignHCenter | Qt.AlignVCenter,
+                    "Not exposed",
+                )
+                model_label = painter.fontMetrics().elidedText(
+                    str(group.get("modelLabel") or "Model"),
+                    Qt.ElideRight,
+                    max(34, int(group_width - 8)),
+                )
+                painter.drawText(
+                    QRectF(center - group_width / 2, plot.bottom() + 5, group_width, 18),
+                    Qt.AlignHCenter | Qt.AlignTop,
+                    model_label,
+                )
+                continue
             height = min(plot.height() - 24, value / maximum * max(1.0, plot.height() - 24))
             top = plot.bottom() - height
             color = QColor(tokens["accent"]) if index == 0 else self._group_color(group)
@@ -846,9 +806,13 @@ class BenchmarkChart(QWidget):
             painter.setBrush(color)
             bar_rect = QRectF(center - bar_width / 2, top, bar_width, max(3.0, height))
             painter.drawRoundedRect(bar_rect, 3, 3)
-            delta = value - baseline
-            delta_text = _format_metric_value(abs(delta), label_metric)
-            annotation = "Baseline" if index == 0 else f"{'+' if delta >= 0 else '-'}{delta_text}"
+            delta = value - baseline if baseline is not None else None
+            delta_text = _format_metric_value(abs(delta), label_metric) if delta is not None else ""
+            annotation = (
+                "Baseline" if index == 0
+                else "No baseline" if delta is None
+                else f"{'+' if delta >= 0 else '-'}{delta_text}"
+            )
             text_y = max(plot.top(), top - 20)
             painter.setPen(QColor(tokens["text2"]))
             painter.drawText(
@@ -875,12 +839,16 @@ class BenchmarkChart(QWidget):
                 "comparisonRole": "baseline" if index == 0 else "comparison",
                 "detailLines": [
                     "Role: Baseline" if index == 0
+                    else "Baseline is not exposed"
+                    if delta is None
                     else f"Difference: {'+' if delta >= 0 else '-'}{delta_text}"
                 ],
             }
             self._points.append((QPointF(center, bar_rect.top()), payload))
             self._hit_targets.append((bar_rect.adjusted(-5, -5, 5, 5), payload))
 
+        if baseline is None:
+            return
         baseline_y = max(
             plot.top(),
             plot.bottom() - min(plot.height() - 24, baseline / maximum * max(1.0, plot.height() - 24)),
@@ -901,7 +869,7 @@ class BenchmarkChart(QWidget):
     def _draw_stack(self, painter: QPainter, plot: QRectF) -> None:
         groups = self._active_groups()
         segments = self._segments or [key for key, _label_text, _color_text in TOKEN_SEGMENTS]
-        totals = [sum(_metric_value(group, segment) for segment in segments) for group in groups]
+        totals = [sum(_token_segment_value(group, segment) for segment in segments) for group in groups]
         maximum = (
             1
             if self._kind == "stack100"
@@ -915,7 +883,7 @@ class BenchmarkChart(QWidget):
             x = plot.left() + slot * (index + 0.5) - width / 2
             bottom = plot.bottom()
             for segment_index, segment in enumerate(segments):
-                value = _metric_value(group, segment)
+                value = _token_segment_value(group, segment)
                 ratio = (value / total) if self._kind == "stack100" and total else (value / maximum)
                 height = min(max(0.0, bottom - plot.top()), ratio * plot.height())
                 painter.setPen(Qt.NoPen)
@@ -985,6 +953,8 @@ class BenchmarkChart(QWidget):
             return
         points = []
         for group in self._active_groups():
+            if not _metric_available(group, "tokensPerTask") or not _metric_available(group, "tasksPerMillion"):
+                continue
             x = _metric_value(group, "tokensPerTask")
             y = _metric_value(group, "tasksPerMillion")
             if x > 0 and y > 0:
@@ -1006,40 +976,56 @@ class BenchmarkChart(QWidget):
             }))
 
     def _draw_community_scatter(self, painter: QPainter, plot: QRectF) -> None:
-        """Ranked efficiency map: real metrics remain visible, never one score."""
-
+        """Position every cohort from its selected live metric pair."""
+        x_metric, y_metric = community_scatter_axes(self._metric)
         points = []
         for group in self._active_groups():
-            x = _metric_value(group, "tokensPerTask")
-            y = _metric_value(group, "tasksPerSession")
+            x = _metric_value(group, x_metric)
+            y = _metric_value(group, y_metric)
             if x > 0 and y > 0:
                 points.append((group, x, y))
-        max_x = max([item[1] for item in points] or [1]) * 1.08
-        max_y = self._visible_maximum(max([item[2] for item in points] or [1]) * 1.12)
-        self._draw_y_labels(painter, plot, max_y)
+        x_min, x_max = scatter_domain([item[1] for item in points])
+        y_min, y_max = scatter_domain([item[2] for item in points], 0.12)
+        observations = [float(item[0].get("observations") or 0) for item in points]
+        observation_min = min(observations or [0])
+        observation_span = max(observations or [0]) - observation_min
         tokens = self._theme.tokens
-        for index, (group, x_value, y_value) in enumerate(points):
-            point = QPointF(
-                plot.left() + x_value / max_x * plot.width(),
-                max(plot.top() + 16, plot.bottom() - y_value / max_y * plot.height()),
+        painter.setPen(QColor(tokens["text3"]))
+        for step in range(5):
+            value = y_min + (y_max - y_min) * step / 4
+            y = plot.bottom() - plot.height() * step / 4
+            painter.drawText(
+                QRectF(0, y - 8, 42, 16), Qt.AlignRight | Qt.AlignVCenter,
+                _format_metric_value(value, _metric_label(y_metric)),
             )
+        for index, (group, x_value, y_value) in enumerate(points):
+            x_ratio = (x_value - x_min) / max(1e-9, x_max - x_min)
+            y_ratio = (y_value - y_min) / max(1e-9, y_max - y_min)
+            point = QPointF(
+                plot.left() + x_ratio * plot.width(),
+                plot.bottom() - y_ratio * plot.height(),
+            )
+            observation = float(group.get("observations") or 0)
+            radius = 9.0 + (5.0 * (observation - observation_min) / observation_span if observation_span else 2.5)
             color = self._group_color(group)
             painter.setPen(QPen(color, 2))
             painter.setBrush(QColor(tokens["panel"]))
-            painter.drawEllipse(point, 13, 13)
+            painter.drawEllipse(point, radius, radius)
             rank = int(group.get("communityRank") or index + 1)
             painter.setPen(color)
-            painter.drawText(QRectF(point.x() - 12, point.y() - 12, 24, 24), Qt.AlignCenter, str(rank))
-            # At the minimum application width, the leaderboard beside the
-            # chart already carries every name and value. Keeping only ranked
-            # markers here prevents labels from colliding; hover remains full.
+            painter.drawText(
+                QRectF(point.x() - radius, point.y() - radius, radius * 2, radius * 2),
+                Qt.AlignCenter, str(rank),
+            )
             if self.width() >= 700:
                 label = painter.fontMetrics().elidedText(
                     str(group.get("modelLabel") or "Model"), Qt.ElideRight, 126
                 )
-                label_rect = QRectF(point.x() + 17, point.y() - 17, 128, 18)
+                label_rect = QRectF(point.x() + radius + 5, point.y() - 17, 128, 18)
                 if label_rect.right() > plot.right():
-                    label_rect.moveRight(point.x() - 17)
+                    label_rect.moveRight(point.x() - radius - 5)
+                if label_rect.top() < plot.top():
+                    label_rect.moveTop(point.y() + radius + 3)
                 painter.setPen(QColor(tokens["text2"]))
                 painter.drawText(label_rect, Qt.AlignVCenter, label)
                 metric_rect = QRectF(label_rect.left(), label_rect.top() + 16, 128, 18)
@@ -1047,15 +1033,15 @@ class BenchmarkChart(QWidget):
                 painter.drawText(
                     metric_rect,
                     Qt.AlignVCenter,
-                    f"{y_value:.1f} tasks / 5h",
+                    _format_metric_value(y_value, _metric_label(y_metric)),
                 )
             self._points.append((point, {
                 "date": "Community result",
                 "model": group.get("modelLabel"),
                 "value": y_value,
-                "metricLabel": "Tasks per 5h capacity",
+                "metricLabel": _metric_label(y_metric),
                 "detailLines": [
-                    f"Tokens per task: {_format_tokens(x_value)}",
+                    f"{_metric_label(x_metric)}: {_format_metric_value(x_value, _metric_label(x_metric))}",
                     f"Weekly burn per task: {_format_points(group.get('weeklyBurnPerTask'))}",
                     f"Observed tasks: {int(group.get('observations') or 0):,}",
                     f"Contributors: {int(group.get('contributors') or 0):,}",
@@ -1065,12 +1051,12 @@ class BenchmarkChart(QWidget):
         painter.drawText(
             QRectF(plot.left(), plot.bottom() + 5, plot.width(), 18),
             Qt.AlignLeft | Qt.AlignTop,
-            "Lower tokens per task",
+            f"{_metric_label(x_metric)}: {_format_metric_value(x_min, _metric_label(x_metric))}",
         )
         painter.drawText(
             QRectF(plot.left(), plot.bottom() + 5, plot.width(), 18),
             Qt.AlignRight | Qt.AlignTop,
-            "Higher tokens per task",
+            f"{_metric_label(x_metric)}: {_format_metric_value(x_max, _metric_label(x_metric))}",
         )
 
     def wheelEvent(self, event) -> None:
@@ -1188,7 +1174,7 @@ class DensityPanel(QFrame):
         self.basis = QComboBox()
         self.basis.setFixedWidth(170)
         self.basis.addItem("Raw totals", "raw")
-        self.basis.addItem("Per 1M tokens", "perMillionTokens")
+        self.basis.addItem("Per 1M work tokens", "perMillionTokens")
         self.basis.addItem("Per 10 weekly points", "perTenWeeklyPoints")
         self.basis.addItem("Per active hour", "perActiveHour")
         self.basis.currentIndexChanged.connect(self._render)
@@ -1206,8 +1192,8 @@ class DensityPanel(QFrame):
         self._metric_columns = 0
         self.values: dict[str, QLabel] = {}
         metric_specs = (
-            ("tokens", "Tokens"), ("tasks", "Tasks"), ("edits", "Edits"),
-            ("files", "Files"), ("tests", "Tests"), ("commands", "Commands"),
+            ("tokens", "Work tokens"), ("tasks", "Completed tasks"), ("edits", "Edits"),
+            ("files", "Unique files"), ("tests", "Tests"), ("commands", "Commands"),
             ("lines", "Lines changed"), ("active", "Active time"),
         )
         for index, (key, label) in enumerate(metric_specs):
@@ -1281,13 +1267,21 @@ class DensityPanel(QFrame):
         group = self._groups[index]
         basis = str(self.basis.currentData() or "raw")
         if basis == "raw":
+            work_available = _metric_available(group, "workTokens")
             values = {
-                "tokens": _format_tokens(group.get("totalTokens", 0)),
-                "tasks": str(group.get("completedTasks", 0)), "edits": str(group.get("edits", 0)),
-                "files": str(group.get("filesChanged", 0)), "tests": str(group.get("tests", 0)),
-                "commands": str(group.get("commands", 0)),
-                "lines": str(int(group.get("linesAdded", 0)) + int(group.get("linesDeleted", 0))),
-                "active": _format_duration(group.get("activeMs")),
+                "tokens": _format_tokens(group.get("workTokens", 0)) if work_available else "Not exposed",
+                "tasks": _format_number(group.get("completedTasks")) if work_available else "Not exposed",
+                "edits": _format_number(group.get("edits")) if work_available else "Not exposed",
+                "files": _format_number(group.get("filesChanged")) if work_available else "Not exposed",
+                "tests": _format_number(group.get("tests")) if work_available else "Not exposed",
+                "commands": _format_number(group.get("commands")) if work_available else "Not exposed",
+                "lines": _format_number(
+                    float(group.get("linesAdded", 0)) + float(group.get("linesDeleted", 0))
+                ) if work_available else "Not exposed",
+                "active": (
+                    _format_duration(group.get("activeMs"))
+                    if _metric_available(group, "activeMs") else "Not exposed"
+                ),
             }
         else:
             normalized = (group.get("normalized") or {}).get(basis) or {}
@@ -1299,10 +1293,18 @@ class DensityPanel(QFrame):
             }
         for key, value in values.items():
             self.values[key].setText(value)
+        aggregation = (
+            f"average across {int(group.get('providerAccountCount') or 1)} provider account(s)"
+            if group.get("aggregationMode") == "per_provider_account"
+            else "combined account pool"
+        )
+        short_burn = group.get("shortBurn") if group.get("shortBurnObservations") else None
+        weekly_burn = group.get("weeklyBurn") if group.get("weeklyBurnObservations") else None
         self.scope.setText(
-            f"{group.get('provider', '').title()} | {_friendly_work_scope(group.get('workScope'))} | "
-            f"5h burn {_format_points(group.get('shortBurn', 0))} | "
-            f"Weekly burn {_format_points(group.get('weeklyBurn', 0))}"
+            f"{group.get('provider', '').title()} | {aggregation} | "
+            f"{_friendly_work_scope(group.get('workScope'))} | "
+            f"Attributed {_format_tokens(group.get('totalTokens'))} | "
+            f"5h burn {_format_points(short_burn)} | Weekly burn {_format_points(weekly_burn)}"
         )
 
 

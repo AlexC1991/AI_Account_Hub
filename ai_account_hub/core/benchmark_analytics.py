@@ -30,9 +30,10 @@ from ai_account_hub.core.model_analytics import (
 )
 
 
-PARSER_VERSION = 4  # bump: recognise the newer Codex "exec" tool for commands/tests
+PARSER_VERSION = 5  # bump: globally deduplicate branched Claude message history
 DEFAULT_HISTORY_DAYS = 180
 MAX_LIMIT_GAP_MINUTES = 20
+MAX_TASK_SPAN_HOURS = 4
 CODEX_SHARED_PROFILE = "__codex_shared__"
 
 _COMMAND_TOOLS = {"shell_command", "exec_command", "bash", "powershell", "exec", "shell"}
@@ -539,7 +540,6 @@ def _parse_claude_file(path: Path, profile_id: str) -> dict:
     project_id = ""
     best_messages: dict[str, dict[str, Any]] = {}
     result_errors: dict[str, bool] = {}
-    task_models: dict[str, dict[tuple[str, str], int]] = defaultdict(lambda: defaultdict(int))
 
     try:
         handle = path.open("r", encoding="utf-8", errors="replace")
@@ -594,6 +594,7 @@ def _parse_claude_file(path: Path, profile_id: str) -> dict:
             )
             candidate = {
                 "taskId": current_task,
+                "messageHash": _hash(message_id),
                 "model": model,
                 "usage": usage,
                 "content": content if isinstance(content, list) else [],
@@ -601,34 +602,44 @@ def _parse_claude_file(path: Path, profile_id: str) -> dict:
                 "total": total,
             }
             previous = best_messages.get(message_id)
-            if previous is None or total >= int(previous.get("total") or 0):
+            if previous is None or total > int(previous.get("total") or 0):
                 best_messages[message_id] = candidate
 
-    pending_tests: dict[str, str] = {}
-    pending_tools: dict[str, str] = {}
     for record in best_messages.values():
         task = tasks.get(str(record["taskId"]))
         if task is None:
             continue
         model = str(record["model"] or "")
         usage = record["usage"]
-        if model:
-            task_models[task["taskId"]][(model, "")] += int(record["total"])
-        task["inputTokens"] += _number(usage.get("input_tokens"))
-        task["cacheCreationTokens"] += _number(usage.get("cache_creation_input_tokens"))
-        task["cachedInputTokens"] += _number(usage.get("cache_read_input_tokens"))
-        task["outputTokens"] += _number(usage.get("output_tokens"))
-        task["totalTokens"] += int(record["total"])
-        timestamp = _iso_time(record["timestamp"])
-        if timestamp and timestamp > task["completedAtUtc"]:
-            task["completedAtUtc"] = timestamp
-        has_response = False
+        fact = {
+            "messageHash": str(record["messageHash"]),
+            "taskId": task["taskId"],
+            "model": model,
+            "timestamp": _iso_time(record["timestamp"]),
+            "inputTokens": _number(usage.get("input_tokens")),
+            "cacheCreationTokens": _number(usage.get("cache_creation_input_tokens")),
+            "cachedInputTokens": _number(usage.get("cache_read_input_tokens")),
+            "reasoningTokens": 0,
+            "outputTokens": _number(usage.get("output_tokens")),
+            "totalTokens": int(record["total"]),
+            "toolCalls": 0,
+            "toolErrors": 0,
+            "commands": 0,
+            "tests": 0,
+            "testsPassed": 0,
+            "edits": 0,
+            "fileHashes": [],
+            "linesAdded": 0,
+            "linesDeleted": 0,
+            "hasResponse": False,
+            "resolvedTools": 0,
+        }
         for block in record["content"]:
             if not isinstance(block, dict):
                 continue
             block_type = str(block.get("type") or "")
             if block_type == "text":
-                has_response = True
+                fact["hasResponse"] = True
                 continue
             if block_type != "tool_use":
                 continue
@@ -636,54 +647,43 @@ def _parse_claude_file(path: Path, profile_id: str) -> dict:
             name = str(block.get("name") or "").strip()
             lower_name = name.lower()
             arguments = block.get("input") if isinstance(block.get("input"), dict) else {}
-            task["toolCalls"] += 1
-            if call_id:
-                pending_tools[call_id] = task["taskId"]
+            fact["toolCalls"] += 1
+            if call_id in result_errors:
+                fact["resolvedTools"] += 1
+                if result_errors[call_id]:
+                    fact["toolErrors"] += 1
             if lower_name in _COMMAND_TOOLS:
-                task["commands"] += 1
+                fact["commands"] += 1
                 command = _command_from_arguments(arguments)
                 if _is_test_command(command):
-                    task["tests"] += 1
-                    if call_id:
-                        pending_tests[call_id] = task["taskId"]
+                    fact["tests"] += 1
+                    if call_id in result_errors and not result_errors[call_id]:
+                        fact["testsPassed"] += 1
             if lower_name in _EDIT_TOOLS:
-                task["edits"] += 1
+                fact["edits"] += 1
                 file_path = arguments.get("file_path") or arguments.get("file")
                 if file_path:
-                    task["fileHashes"].append(_hash(file_path))
+                    fact["fileHashes"].append(_hash(file_path))
                 if lower_name == "edit":
                     old_text = arguments.get("old_string") or ""
                     new_text = arguments.get("new_string") or ""
-                    task["linesDeleted"] += len(str(old_text).splitlines())
-                    task["linesAdded"] += len(str(new_text).splitlines())
+                    fact["linesDeleted"] += len(str(old_text).splitlines())
+                    fact["linesAdded"] += len(str(new_text).splitlines())
                 elif lower_name == "write":
-                    task["linesAdded"] += len(str(arguments.get("content") or "").splitlines())
-        if has_response:
-            task["status"] = "completed"
-
-    for call_id, failed in result_errors.items():
-        task_id = pending_tests.get(call_id)
-        if task_id and task_id in tasks and not failed:
-            tasks[task_id]["testsPassed"] += 1
-        if failed:
-            # Tool-use IDs are globally stable in Claude transcripts. The
-            # cache retains only the owning task ID and numeric error count.
-            owner = pending_tools.get(call_id)
-            if owner and owner in tasks:
-                tasks[owner]["toolErrors"] += 1
+                    fact["linesAdded"] += len(str(arguments.get("content") or "").splitlines())
+        task.setdefault("_messageFacts", []).append(fact)
 
     for task in tasks.values():
-        models = task_models.get(task["taskId"]) or {}
+        models: dict[tuple[str, str], int] = defaultdict(int)
+        for fact in task.get("_messageFacts", []):
+            if fact.get("model"):
+                models[(str(fact["model"]), "")] += int(fact.get("totalTokens") or 0)
         if models:
             (model, effort), _tokens = max(models.items(), key=lambda item: item[1])
             _set_model(task, model, effort)
             if len(models) > 1:
                 task["provenance"] = "mixed-model task"
-        started = _parse_time(task.get("startedAtUtc"))
-        completed = _parse_time(task.get("completedAtUtc"))
-        if started and completed and completed >= started:
-            task["durationMs"] = int((completed - started).total_seconds() * 1000)
-    payload["tasks"] = [_finalize_task(task) for task in tasks.values() if task.get("modelId")]
+    payload["tasks"] = [task for task in tasks.values() if task.get("_messageFacts")]
     return payload
 
 
@@ -820,6 +820,84 @@ def _persist_tasks(tasks: list[dict]) -> None:
         connection.close()
 
 
+def _claude_fact_rank(fact: dict) -> tuple:
+    """Prefer the most complete streamed copy of one Claude message."""
+    return (
+        _number(fact.get("totalTokens")),
+        _number(fact.get("resolvedTools")),
+        _number(fact.get("toolCalls")),
+        _number(fact.get("edits")),
+    )
+
+
+def _apply_claude_message_facts(
+    merged: dict[str, dict],
+    facts: dict[str, tuple[str, dict]],
+) -> None:
+    """Apply each globally unique Claude assistant message exactly once."""
+    model_weights: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    fact_counts: dict[str, int] = defaultdict(int)
+    additive = (
+        "inputTokens", "cachedInputTokens", "cacheCreationTokens",
+        "reasoningTokens", "outputTokens", "totalTokens", "toolCalls",
+        "toolErrors", "commands", "tests", "testsPassed", "edits",
+        "linesAdded", "linesDeleted",
+    )
+    for task in merged.values():
+        if task.get("provider") != "claude":
+            continue
+        for key in additive:
+            task[key] = 0
+        task["fileHashes"] = []
+        task["filesChanged"] = 0
+        task["status"] = "incomplete"
+        task["completedAtUtc"] = ""
+        task["durationMs"] = 0
+
+    for _message_hash, (task_id, fact) in facts.items():
+        task = merged.get(task_id)
+        if task is None:
+            continue
+        fact_counts[task_id] += 1
+        for key in additive:
+            task[key] += _number(fact.get(key))
+        task["fileHashes"].extend(
+            str(value) for value in fact.get("fileHashes", []) if value
+        )
+        model = str(fact.get("model") or "")
+        if model:
+            model_weights[task_id][model] += _number(fact.get("totalTokens"))
+        timestamp = str(fact.get("timestamp") or "")
+        if timestamp and timestamp > str(task.get("completedAtUtc") or ""):
+            task["completedAtUtc"] = timestamp
+        if bool(fact.get("hasResponse")):
+            task["status"] = "completed"
+
+    for task_id, task in list(merged.items()):
+        if task.get("provider") != "claude":
+            continue
+        if fact_counts.get(task_id, 0) <= 0:
+            del merged[task_id]
+            continue
+        weights = model_weights.get(task_id) or {}
+        if weights:
+            model = max(weights.items(), key=lambda item: item[1])[0]
+            _set_model(task, model)
+            if len(weights) > 1:
+                task["provenance"] = "mixed-model task"
+        started = _parse_time(task.get("startedAtUtc"))
+        completed = _parse_time(task.get("completedAtUtc"))
+        if started and completed and completed >= started:
+            duration_ms = int((completed - started).total_seconds() * 1000)
+            if duration_ms <= MAX_TASK_SPAN_HOURS * 3_600_000:
+                task["durationMs"] = duration_ms
+            else:
+                # A multi-day transcript branch measures idle calendar time,
+                # not coding activity. Keep the task but exclude that span.
+                task["durationOutlier"] = True
+        merged[task_id] = _finalize_task(task)
+
+
 def _scan_tasks(
     profiles: list[dict],
     cutoff: dt.datetime,
@@ -828,6 +906,7 @@ def _scan_tasks(
     init_benchmark_db()
     connection = sqlite3.connect(_benchmark_db())
     merged: dict[str, dict] = {}
+    claude_facts: dict[str, tuple[str, dict]] = {}
     stats = {"files": 0, "cachedFiles": 0, "parsedFiles": 0, "events": 0}
     try:
         for provider, profile_id, path, attribution in _source_specs(profiles, cutoff):
@@ -857,10 +936,23 @@ def _scan_tasks(
             for task in payload.get("tasks", []):
                 if not isinstance(task, dict) or not task.get("taskId"):
                     continue
-                merged[task["taskId"]] = _merge_task(merged.get(task["taskId"]), task)
+                candidate = dict(task)
+                message_facts = candidate.pop("_messageFacts", [])
+                task_id = str(candidate["taskId"])
+                merged[task_id] = _merge_task(merged.get(task_id), candidate)
+                if provider != "claude":
+                    continue
+                for fact in message_facts:
+                    if not isinstance(fact, dict) or not fact.get("messageHash"):
+                        continue
+                    message_hash = str(fact["messageHash"])
+                    current = claude_facts.get(message_hash)
+                    if current is None or _claude_fact_rank(fact) > _claude_fact_rank(current[1]):
+                        claude_facts[message_hash] = (task_id, dict(fact))
         connection.commit()
     finally:
         connection.close()
+    _apply_claude_message_facts(merged, claude_facts)
     tasks = sorted(
         merged.values(),
         key=lambda item: (str(item.get("startedAtUtc") or ""), str(item.get("taskId") or "")),
@@ -868,6 +960,47 @@ def _scan_tasks(
     _persist_tasks(tasks)
     stats["tasks"] = len(tasks)
     return tasks, stats
+
+
+def _short_window_is_trustworthy(row: dict, provider: str) -> bool:
+    """Reject legacy Codex weekly snapshots stored in the old short slot."""
+    label = str(row.get("shortLabel") or "").strip().lower()
+    compact_label = "".join(character for character in label if character.isalnum())
+    if label:
+        if "week" in label or compact_label in {"7d", "10080m", "10080min"}:
+            return False
+        if compact_label in {"5h", "300m", "300min"} or "5 hour" in label:
+            return True
+        # A labelled short slot is provider evidence even if its duration is
+        # not one of today's known values.
+        return provider != "codex"
+
+    # Claude's historical short slot has always represented its five-hour
+    # window. Old Codex rows are ambiguous because a removed weekly fallback
+    # wrote weekly data into this slot without retaining a duration or label.
+    if provider != "codex":
+        return True
+
+    refreshed = _parse_time(row.get("refreshedAtUtc"))
+    reset = _parse_time(row.get("shortResetUtc"))
+    if refreshed is None or reset is None:
+        return False
+    reset_horizon = (reset - refreshed).total_seconds() / 60
+    if reset_horizon < -30 or reset_horizon > 8 * 60:
+        return False
+
+    short_used = _float(row.get("shortUsedPercent"))
+    weekly_used = _float(row.get("weeklyUsedPercent"))
+    weekly_reset = _parse_time(row.get("weeklyResetUtc"))
+    duplicate_usage = (
+        short_used is not None
+        and weekly_used is not None
+        and abs(short_used - weekly_used) < 0.001
+    )
+    duplicate_reset = (
+        weekly_reset is not None and abs((reset - weekly_reset).total_seconds()) < 1
+    )
+    return not (duplicate_usage and duplicate_reset)
 
 
 def _limit_segments(profiles: list[dict], cutoff: dt.datetime, tasks: list[dict]) -> list[dict]:
@@ -910,15 +1043,23 @@ def _limit_segments(profiles: list[dict], cutoff: dt.datetime, tasks: list[dict]
             gap = (end - start).total_seconds() / 60
             if gap > MAX_LIMIT_GAP_MINUTES:
                 continue
+            provider = profile_provider.get(profile_id, str(after.get("provider") or "")).lower()
             short_before = _float(before.get("shortUsedPercent"))
             short_after = _float(after.get("shortUsedPercent"))
             weekly_before = _float(before.get("weeklyUsedPercent"))
             weekly_after = _float(after.get("weeklyUsedPercent"))
-            short_burn = max(0.0, short_after - short_before) if short_before is not None and short_after is not None else 0.0
+            short_is_trustworthy = (
+                _short_window_is_trustworthy(before, provider)
+                and _short_window_is_trustworthy(after, provider)
+            )
+            short_burn = (
+                max(0.0, short_after - short_before)
+                if short_is_trustworthy and short_before is not None and short_after is not None
+                else 0.0
+            )
             weekly_burn = max(0.0, weekly_after - weekly_before) if weekly_before is not None and weekly_after is not None else 0.0
             if short_burn <= 0 and weekly_burn <= 0:
                 continue
-            provider = profile_provider.get(profile_id, str(after.get("provider") or ""))
             candidates: list[dict] = []
             seen_tasks: set[str] = set()
             profile_hash = _hash(profile_id)
@@ -995,6 +1136,42 @@ def build_benchmark_analytics(
 
 
 __all__ = [
-    "DEFAULT_HISTORY_DAYS", "MAX_LIMIT_GAP_MINUTES", "PARSER_VERSION",
+    "DEFAULT_HISTORY_DAYS", "MAX_LIMIT_GAP_MINUTES", "MAX_TASK_SPAN_HOURS", "PARSER_VERSION",
     "CODEX_SHARED_PROFILE", "build_benchmark_analytics", "init_benchmark_db",
+]
+
+# Keep the original public import surface after the view layer was extracted.
+# Lazy forwarding avoids the benchmark_view -> benchmark_analytics helper cycle.
+def _view_call(name: str, *args, **kwargs):
+    from ai_account_hub.core import benchmark_view
+
+    return getattr(benchmark_view, name)(*args, **kwargs)
+
+
+def aggregate_base_model_groups(*args, **kwargs):
+    return _view_call("aggregate_base_model_groups", *args, **kwargs)
+
+
+def base_model_key(*args, **kwargs):
+    return _view_call("base_model_key", *args, **kwargs)
+
+
+def build_benchmark_view(*args, **kwargs):
+    return _view_call("build_benchmark_view", *args, **kwargs)
+
+
+def build_head_to_head(*args, **kwargs):
+    return _view_call("build_head_to_head", *args, **kwargs)
+
+
+def privacy_violations(*args, **kwargs):
+    return _view_call("privacy_violations", *args, **kwargs)
+
+
+def productivity_density_csv(*args, **kwargs):
+    return _view_call("productivity_density_csv", *args, **kwargs)
+
+__all__ += [
+    "aggregate_base_model_groups", "base_model_key", "build_benchmark_view",
+    "build_head_to_head", "privacy_violations", "productivity_density_csv",
 ]
