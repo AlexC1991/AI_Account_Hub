@@ -30,6 +30,9 @@ Community chart behavior introduced during the 1.1 feature release.
 - Token category charts fold separately exposed reasoning tokens into Output
   for cross-provider presentation while raw analytics and exports retain the
   provider reasoning counter.
+- Limit lines use solid segments between adjacent observations and dashed
+  bridges across days without snapshots, preserving continuity without
+  inventing zero usage.
 
 ## Community Fixes
 
@@ -39,13 +42,16 @@ Community chart behavior introduced during the 1.1 feature release.
   more provider accounts do not inflate community comparisons.
 - Seven, 30, and 90-day ratios are recalculated from the selected daily range.
 - Lines is restored as the default Community chart.
+- Synthetic staging lines now have distinct model-specific daily movement
+  instead of repeating one constant ratio across every date. Real cohorts are
+  never transformed and continue to use contributed daily values.
 - Community dots now use live data coordinates rather than fixed model slots.
   The active ranking selects the metric pair, visible values define both axes,
   and marker size represents observation volume.
 
 ## Verification
 
-- The complete Python and Qt suite passes with 121 tests and one intentional
+- The complete Python and Qt suite passes with 122 tests and one intentional
   platform skip.
 - The Cloudflare Worker passes TypeScript checking and Wrangler dry-run build.
 - The Windows portable application builds and passes its frozen smoke test.

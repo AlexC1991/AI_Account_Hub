@@ -826,6 +826,80 @@ async function readPublishedPayload(env: Env, key: string): Promise<JsonObject |
   return parsed;
 }
 
+function syntheticWaves(offset: number, modelIndex: number): [number, number, number] {
+  const phase = modelIndex * 0.83;
+  return [
+    0.88 + 0.11 * Math.sin(offset * 0.71 + phase) + 0.04 * Math.cos(offset * 0.29 + phase),
+    1.0 + 0.08 * Math.sin(offset * 0.43 + phase + 1.2) + 0.025 * Math.cos(offset * 0.17 + phase),
+    1.0 + 0.10 * Math.cos(offset * 0.37 + phase + 0.4),
+  ];
+}
+
+function dynamicSyntheticSample(sample: JsonObject): JsonObject {
+  const groups = Array.isArray(sample.groups) ? sample.groups.filter(isObject) : [];
+  const now = new Date();
+  const endUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  groups.forEach((group, modelIndex) => {
+    if (!isObject(group.days)) return;
+    const entries = Object.entries(group.days).sort(([left], [right]) => left.localeCompare(right));
+    if (entries.length === 0) return;
+    const first = isObject(entries[0][1]) ? entries[0][1] : {};
+    const baseTokens = Math.max(1, Number(group.tokensPerTask || first.tokensPerTask || 1));
+    const baseSession = Math.max(0.01, Number(group.tasksPerSession || first.tasksPerSession || 1));
+    const baseWeekly = Math.max(0.01, Number(group.weeklyBurnPerTask || first.weeklyBurnPerTask || 1));
+    const days: JsonObject = {};
+    let totalTokens = 0;
+    let totalTasks = 0;
+    let totalShortBurn = 0;
+    let totalWeeklyBurn = 0;
+    let observations = 0;
+    entries.forEach(([, value], offset) => {
+      const bucket = isObject(value) ? { ...value } : {};
+      const [throughputWave, tokenWave, weeklyWave] = syntheticWaves(offset, modelIndex);
+      const tasks = Math.max(0, Number(bucket.tasks || bucket.observations || 0));
+      const tasksPerSession = Math.max(0.01, baseSession * throughputWave);
+      const tokensPerTask = Math.max(1, baseTokens * tokenWave);
+      const weeklyBurnPerTask = Math.max(0.01, baseWeekly * weeklyWave);
+      const shortBurn = tasks > 0 ? tasks * 100 / tasksPerSession : 0;
+      const weeklyBurn = tasks * weeklyBurnPerTask;
+      const day = new Date(endUtc - (entries.length - offset - 1) * 86_400_000)
+        .toISOString().slice(0, 10);
+      days[day] = {
+        ...bucket,
+        tokens: tasks * tokensPerTask,
+        shortBurn,
+        weeklyBurn,
+        tasksPerSession,
+        tokensPerTask,
+        weeklyBurnPerTask,
+      };
+      totalTokens += tasks * tokensPerTask;
+      totalTasks += tasks;
+      totalShortBurn += shortBurn;
+      totalWeeklyBurn += weeklyBurn;
+      observations += Number(bucket.observations || tasks);
+    });
+    group.days = days;
+    group.totalTokens = totalTokens;
+    group.completedTasks = totalTasks;
+    group.shortBurn = totalShortBurn;
+    group.weeklyBurn = totalWeeklyBurn;
+    group.observations = observations;
+    group.tasksPerSession = totalShortBurn > 0 ? ratio(totalTasks * 100, totalShortBurn) : 0;
+    group.tokensPerTask = ratio(totalTokens, totalTasks);
+    group.weeklyBurnPerTask = ratio(totalWeeklyBurn, totalTasks);
+    group.normalized = {
+      tokensPerCompletedTask: group.tokensPerTask,
+      tasksPerMillionTokens: totalTokens > 0 ? ratio(totalTasks * 1_000_000, totalTokens) : 0,
+      tasksPerSession: group.tasksPerSession,
+    };
+  });
+  sample.groups = groups;
+  sample.syntheticDynamic = true;
+  sample.generatedAtUtc = new Date().toISOString();
+  return sample;
+}
+
 async function publishedModels(env: Env): Promise<Response> {
   try {
     const real = await readPublishedPayload(env, env.PUBLISHED_REAL_MODELS_KEY);
@@ -839,7 +913,7 @@ async function publishedModels(env: Env): Promise<Response> {
       sample.minimumContributors = Number(real?.minimumContributors || minimumPublicContributors(env));
       sample.collectionContributors = Number(real?.collectionContributors || 0);
       sample.collectionSubmissions = Number(real?.collectionSubmissions || 0);
-      return json(sample, 200, "public, max-age=60, stale-while-revalidate=30");
+      return json(dynamicSyntheticSample(sample), 200, "public, max-age=60, stale-while-revalidate=30");
     }
     return json(real || {
       schemaVersion: SCHEMA_VERSION,

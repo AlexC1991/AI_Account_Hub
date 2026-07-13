@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 import secrets
 import time
@@ -243,6 +244,51 @@ _TEST_MODELS = (
 )
 
 
+def _synthetic_waves(offset: int, model_index: int) -> tuple[float, float, float]:
+    """Create distinct daily sample movement without pretending it is real data."""
+    phase = model_index * 0.83
+    throughput = 0.88 + 0.11 * math.sin(offset * 0.71 + phase) + 0.04 * math.cos(offset * 0.29 + phase)
+    token_cost = 1.0 + 0.08 * math.sin(offset * 0.43 + phase + 1.2) + 0.025 * math.cos(offset * 0.17 + phase)
+    weekly_cost = 1.0 + 0.10 * math.cos(offset * 0.37 + phase + 0.4)
+    return throughput, token_cost, weekly_cost
+
+
+def _dynamicize_staging_sample(payload: dict) -> None:
+    """Upgrade the old static R2 preview while leaving real cohorts untouched."""
+    if str(payload.get("dataSource") or "") != "synthetic-staging" or payload.get("syntheticDynamic"):
+        return
+    for model_index, group in enumerate(payload.get("groups") or []):
+        if not isinstance(group, dict) or not isinstance(group.get("days"), dict):
+            continue
+        source_days = sorted(group["days"].items())
+        if not source_days:
+            continue
+        base_tokens = float(group.get("tokensPerTask") or 0)
+        base_session = float(group.get("tasksPerSession") or 0)
+        base_weekly = float(group.get("weeklyBurnPerTask") or 0)
+        end = _utc_now().date()
+        dynamic_days = {}
+        for offset, (_day, source) in enumerate(source_days):
+            bucket = dict(source) if isinstance(source, dict) else {}
+            throughput_wave, token_wave, weekly_wave = _synthetic_waves(offset, model_index)
+            tasks = float(bucket.get("tasks") or bucket.get("observations") or 0)
+            tasks_per_session = max(0.01, base_session * throughput_wave)
+            tokens_per_task = max(1.0, base_tokens * token_wave)
+            weekly_per_task = max(0.01, base_weekly * weekly_wave)
+            bucket.update({
+                "tokens": tasks * tokens_per_task,
+                "shortBurn": tasks * 100 / tasks_per_session if tasks else 0,
+                "weeklyBurn": tasks * weekly_per_task,
+                "tasksPerSession": round(tasks_per_session, 4),
+                "tokensPerTask": round(tokens_per_task, 4),
+                "weeklyBurnPerTask": round(weekly_per_task, 4),
+            })
+            day = end - dt.timedelta(days=len(source_days) - offset - 1)
+            dynamic_days[day.isoformat()] = bucket
+        group["days"] = dynamic_days
+    payload["syntheticDynamic"] = True
+
+
 class TestCommunityApi:
     """Deterministic offline adapter used by Help demo and local UI tests."""
 
@@ -265,27 +311,41 @@ class TestCommunityApi:
             buckets = {}
             task_total = 0
             token_total = 0
+            short_burn_total = 0.0
+            weekly_burn_total = 0.0
             observation_total = 0
             for offset in range(days):
                 day = start + dt.timedelta(days=offset)
-                wave = 0.72 + ((offset + model_index * 3) % 7) * 0.055
-                daily_observations = max(1, round(spec.observations / 30 * wave))
-                daily_tasks = max(1, round(daily_observations * spec.tasks_per_5h / 24))
-                daily_tokens = daily_tasks * spec.tokens_per_task
+                throughput_wave, token_wave, weekly_wave = _synthetic_waves(offset, model_index)
+                daily_observations = max(1, round(spec.observations / 30 * throughput_wave))
+                tasks_per_session = max(0.01, spec.tasks_per_5h * throughput_wave)
+                tokens_per_task = max(1, round(spec.tokens_per_task * token_wave))
+                weekly_per_task = max(0.01, spec.weekly_per_task * weekly_wave)
+                daily_tasks = max(1, round(daily_observations * tasks_per_session / 24))
+                daily_tokens = daily_tasks * tokens_per_task
+                daily_short_burn = daily_tasks * 100 / tasks_per_session
+                daily_weekly_burn = daily_tasks * weekly_per_task
                 task_total += daily_tasks
                 token_total += daily_tokens
+                short_burn_total += daily_short_burn
+                weekly_burn_total += daily_weekly_burn
                 observation_total += daily_observations
                 buckets[day.isoformat()] = {
                     "tokens": daily_tokens,
                     "tasks": daily_tasks,
-                    "tasksPerSession": round(spec.tasks_per_5h * wave, 2),
-                    "tokensPerTask": spec.tokens_per_task,
-                    "weeklyBurnPerTask": spec.weekly_per_task,
+                    "shortBurn": daily_short_burn,
+                    "weeklyBurn": daily_weekly_burn,
+                    "tasksPerSession": round(tasks_per_session, 2),
+                    "tokensPerTask": tokens_per_task,
+                    "weeklyBurnPerTask": round(weekly_per_task, 4),
                     "observations": daily_observations,
                 }
             label = spec.model_name
             if spec.reasoning_name:
                 label = f"{label} - {spec.reasoning_name}"
+            aggregate_session = task_total * 100 / short_burn_total
+            aggregate_tokens = token_total / task_total
+            aggregate_weekly = weekly_burn_total / task_total
             groups.append({
                 "provider": spec.provider,
                 "modelId": spec.model_id,
@@ -296,17 +356,17 @@ class TestCommunityApi:
                 "filterKey": f"community|{spec.provider}|{spec.model_id}|{spec.reasoning}",
                 "totalTokens": token_total,
                 "completedTasks": task_total,
-                "shortBurn": round(task_total / spec.tasks_per_5h * 100, 1),
-                "weeklyBurn": round(task_total * spec.weekly_per_task, 1),
-                "tasksPerSession": spec.tasks_per_5h,
-                "tokensPerTask": spec.tokens_per_task,
-                "weeklyBurnPerTask": spec.weekly_per_task,
+                "shortBurn": round(short_burn_total, 1),
+                "weeklyBurn": round(weekly_burn_total, 1),
+                "tasksPerSession": aggregate_session,
+                "tokensPerTask": aggregate_tokens,
+                "weeklyBurnPerTask": aggregate_weekly,
                 "observations": observation_total,
                 "contributors": spec.contributors,
                 "normalized": {
-                    "tokensPerCompletedTask": spec.tokens_per_task,
-                    "tasksPerMillionTokens": 1_000_000 / spec.tokens_per_task,
-                    "tasksPerSession": spec.tasks_per_5h,
+                    "tokensPerCompletedTask": aggregate_tokens,
+                    "tasksPerMillionTokens": 1_000_000 / aggregate_tokens,
+                    "tasksPerSession": aggregate_session,
                 },
                 "days": buckets,
             })
@@ -410,6 +470,7 @@ class CloudflareCommunityApi:
             raise CommunityApiError("Community Worker returned an invalid aggregate shape")
         if len(payload["groups"]) > 100:
             raise CommunityApiError("Community Worker returned too many model groups")
+        _dynamicize_staging_sample(payload)
         provider = str(provider or "all").lower()
         if provider != "all":
             payload["groups"] = [

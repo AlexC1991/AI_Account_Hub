@@ -100,6 +100,11 @@ the right remains a vertical-bar chart:
 - resource/work position and tokens per completed task
 - per-task token and active-duration distributions
 
+Additive activity treats an absent model/day bucket as zero observed activity.
+Limit movement remains unavailable when no trustworthy snapshot exists; the
+line chart uses a faded dashed bridge between the surrounding observations so
+calendar spacing remains continuous without presenting the missing day as zero.
+
 The Models section's taller lower panel switches independently between its
 base-model table and numeric activity journal.
 
@@ -145,6 +150,10 @@ nor a larger daily cohort silently increases a model's public bar.
 Tokens-per-task and limit-per-task ratios use the underlying contributor-day
 totals as weighted observations. Contributor-days and observed completed tasks
 remain separate sample-size fields.
+
+The labelled synthetic staging preview uses deterministic, model-specific daily
+movement so its line controls remain demonstrable rather than displaying flat
+placeholders. That transformation is never applied to real Community cohorts.
 
 Community labels distinguish synthetic staging samples, real collection that
 has not reached publication threshold, and qualifying real cohorts. A cohort

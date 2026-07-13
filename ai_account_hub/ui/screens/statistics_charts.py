@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QLabel, QScrollArea, QSizePolicy, QTableWidget,
@@ -666,9 +666,15 @@ class BenchmarkChart(QWidget):
             group for group in self._active_groups()
             if _metric_available(group, self._metric)
         ]
-        days = sorted({day for group in groups for day in group.get("days", {})})
-        if not days:
+        observed_days = sorted({day for group in groups for day in group.get("days", {})})
+        if not observed_days:
             return
+        first_day = dt.date.fromisoformat(observed_days[0])
+        last_day = dt.date.fromisoformat(observed_days[-1])
+        days = [
+            (first_day + dt.timedelta(days=offset)).isoformat()
+            for offset in range((last_day - first_day).days + 1)
+        ]
         values = [
             _day_value(bucket, self._metric)
             for group in groups
@@ -682,19 +688,26 @@ class BenchmarkChart(QWidget):
         painter.save()
         painter.setClipRect(plot.adjusted(-4, -4, 4, 4))
         for group in groups:
-            path = QPainterPath()
-            active = False
+            previous_point: QPointF | None = None
+            previous_index = -1
             for index, day in enumerate(days):
                 x = self._scaled_x(index, len(days), plot)
                 bucket = (group.get("days") or {}).get(day, {})
                 if not _day_available(bucket, self._metric):
-                    active = False
                     continue
                 value = _day_value(bucket, self._metric)
                 y = plot.bottom() - value / maximum * plot.height()
                 point = QPointF(x, y)
-                path.moveTo(point) if not active else path.lineTo(point)
-                active = True
+                if previous_point is not None:
+                    color = self._group_color(group)
+                    pen = QPen(color, 2)
+                    if index - previous_index > 1:
+                        color.setAlpha(145)
+                        pen.setColor(color)
+                        pen.setStyle(Qt.DashLine)
+                    painter.setPen(pen)
+                    painter.drawLine(previous_point, point)
+                previous_point, previous_index = point, index
                 if value > 0 and plot.left() <= x <= plot.right() and y >= plot.top() - 4:
                     self._points.append((point, {
                         "date": day, "model": group.get("modelLabel"), "value": value,
@@ -703,9 +716,6 @@ class BenchmarkChart(QWidget):
                     painter.setPen(Qt.NoPen)
                     painter.setBrush(self._group_color(group))
                     painter.drawEllipse(point, 3.2, 3.2)
-            painter.setPen(QPen(self._group_color(group), 2))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawPath(path)
         painter.restore()
         painter.setPen(QColor(self._theme.tokens["text3"]))
         painter.drawText(QRectF(plot.left(), plot.bottom() + 5, plot.width(), 18), Qt.AlignLeft, days[0])

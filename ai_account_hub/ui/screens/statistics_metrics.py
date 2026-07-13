@@ -68,8 +68,8 @@ COMMUNITY_SCATTER_AXES = {
 LINE_CHART_VIEWS = (
     ("Work tokens", "Work tokens over time", "Non-cache tokens (excludes cache re-reads)", "line", "workTokens", ()),
     ("Completed tasks", "Completed tasks over time", "Completed work recorded for each model", "line", "completedTasks", ()),
-    ("5h limit burn", "5h limit burn over time", "Measured movement from trustworthy intervals", "line", "shortBurn", ()),
-    ("Weekly limit burn", "Weekly limit burn over time", "Positive movement with reset decreases excluded", "line", "weeklyBurn", ()),
+    ("5h limit burn", "5h limit burn over time", "Measured intervals; dashed spans bridge days without snapshots", "line", "shortBurn", ()),
+    ("Weekly limit burn", "Weekly limit burn over time", "Reset decreases excluded; dashed spans bridge unobserved days", "line", "weeklyBurn", ()),
     ("Edits", "Edit activity over time", "Observed edit operations by model", "line", "edits", ()),
     ("File touches", "File touches over time", "Changed-file operations; repeat touches remain visible", "line", "fileTouches", ()),
     ("Tests", "Test activity over time", "Observed test commands by model", "line", "tests", ()),
