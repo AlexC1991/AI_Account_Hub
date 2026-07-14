@@ -1161,12 +1161,8 @@ _CODEX_LIMIT_SNAPSHOT_FIELDS = (
     "weeklyResetEstimateUtc",
     "weeklyResetEstimateSource",
 )
-_CODEX_ROLLOVER_POLL_SECONDS = 2 * 60
-_CODEX_ROLLOVER_CONFIRM_SECONDS = 8 * 60
-_CODEX_ROLLOVER_MAX_HOLD_SECONDS = 20 * 60
+_CODEX_ROLLOVER_POLL_SECONDS = 60
 _CODEX_ROLLOVER_MIN_OBSERVATION_SECONDS = 60
-_CODEX_ROLLOVER_STABLE_RESET_SECONDS = 45
-_CODEX_ROLLOVER_ROLLING_RESET_SECONDS = 75
 
 
 def _clear_codex_rollover_verification(profile: dict) -> None:
@@ -1177,19 +1173,6 @@ def _clear_codex_rollover_verification(profile: dict) -> None:
         profile["codexRolloverCandidates"] = {}
     profile["codexLimitVerificationState"] = ""
     profile["codexRolloverPollDueUtc"] = ""
-
-
-def _codex_clean_diagnostics(result: dict) -> bool:
-    diagnostics = result.get("rateLimitDiagnostics")
-    if not isinstance(diagnostics, dict):
-        return False
-    return (
-        int(sanitize_float(diagnostics.get("sampleCount")) or 0) >= 3
-        and int(sanitize_float(diagnostics.get("usableSamples")) or 0) >= 3
-        and int(sanitize_float(diagnostics.get("blockedSamples")) or 0) == 0
-        and not bool(diagnostics.get("selectedBlocked"))
-        and not bool(diagnostics.get("disagreement"))
-    )
 
 
 def _codex_window_signature(window_name: str, incoming_window: object) -> str:
@@ -1248,14 +1231,13 @@ def defer_codex_rollover_poll(profile: dict, now: dt.datetime | None = None) -> 
 
 
 def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.datetime]:
-    """Return exhausted windows whose apparent early rollover needs confirmation.
+    """Hold one apparent rollover until Codex repeats it one minute later.
 
-    Codex app-server can return a newly initialized 0%-used window whose reset is
-    recalculated as ``now + duration`` every time a process starts. A real active
-    window instead develops a stable absolute reset anchor (and may accumulate
-    usage). Persist observations across refresh processes so those shapes can be
-    distinguished, while bounding the hold so a stale exhausted state cannot live
-    forever. Explicit reset-credit results bypass verification entirely.
+    The provider reading remains authoritative. The guard only prevents a single
+    transient ready snapshot from changing the card: the first reading enters
+    verification and preserves the exhausted display, while the second successful
+    non-exhausted reading is accepted exactly as reported. Explicit reset-credit
+    results still bypass verification.
     """
     candidates = profile.get("codexRolloverCandidates")
     if not isinstance(candidates, dict):
@@ -1277,7 +1259,6 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
         return {}
 
     now = parse_iso_datetime(result.get("refreshedAtIso")) or dt.datetime.now(dt.timezone.utc)
-    clean_observation = _codex_clean_diagnostics(result)
     guarded: dict[str, dt.datetime] = {}
     for window_name, used_key, reset_key, incoming_key in (
         ("short", "shortLimitUsedPercent", "shortLimitResetUtc", "shortWindow"),
@@ -1304,7 +1285,6 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
             if isinstance(incoming_window, dict)
             else None
         )
-        incoming_reset_dt = parse_iso_datetime(incoming_reset)
         signature = _codex_window_signature(window_name, incoming_window)
         candidate = candidates.get(window_name)
         if not isinstance(candidate, dict) or candidate.get("windowSignature") != signature:
@@ -1316,10 +1296,6 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
                 "firstResetUtc": incoming_reset,
                 "latestResetUtc": incoming_reset,
                 "observations": 1,
-                "cleanStreak": 1 if clean_observation else 0,
-                "stableResetObservations": 0,
-                "rollingResetObservations": 0,
-                "usageAdvanced": False,
                 "usedPercent": incoming_used,
                 "windowSignature": signature,
             }
@@ -1328,51 +1304,17 @@ def _codex_snapshot_guard_windows(profile: dict, result: dict) -> dict[str, dt.d
             gap = (now - last_observation).total_seconds() if last_observation else None
             candidate["lastSeenUtc"] = now.isoformat()
             if gap is None or gap >= _CODEX_ROLLOVER_MIN_OBSERVATION_SECONDS:
-                previous_reset = parse_iso_datetime(candidate.get("latestResetUtc"))
-                if previous_reset is not None and incoming_reset_dt is not None:
-                    reset_shift = abs((incoming_reset_dt - previous_reset).total_seconds())
-                    if reset_shift <= _CODEX_ROLLOVER_STABLE_RESET_SECONDS:
-                        candidate["stableResetObservations"] = int(candidate.get("stableResetObservations") or 0) + 1
-                    elif gap is not None and abs(reset_shift - gap) <= _CODEX_ROLLOVER_ROLLING_RESET_SECONDS:
-                        candidate["rollingResetObservations"] = int(candidate.get("rollingResetObservations") or 0) + 1
-                previous_usage = sanitize_float(candidate.get("usedPercent"))
-                if previous_usage is not None and incoming_used is not None and incoming_used > previous_usage + 0.5:
-                    candidate["usageAdvanced"] = True
                 candidate["observations"] = int(candidate.get("observations") or 1) + 1
-                candidate["cleanStreak"] = (
-                    int(candidate.get("cleanStreak") or 0) + 1 if clean_observation else 0
-                )
                 candidate["lastObservationUtc"] = now.isoformat()
                 candidate["latestResetUtc"] = incoming_reset
                 candidate["usedPercent"] = incoming_used
 
-        first_seen = parse_iso_datetime(candidate.get("firstSeenUtc")) or now
-        age = max(0.0, (now - first_seen).total_seconds())
         observations = int(candidate.get("observations") or 1)
-        clean_streak = int(candidate.get("cleanStreak") or 0)
-        stable_resets = int(candidate.get("stableResetObservations") or 0)
-        confirmed = (
-            age >= 2 * 60
-            and observations >= 2
-            and clean_streak >= 2
-            and stable_resets >= 1
-            and bool(candidate.get("usageAdvanced"))
-        ) or (
-            age >= _CODEX_ROLLOVER_CONFIRM_SECONDS
-            and observations >= 3
-            and clean_streak >= 3
-            and stable_resets >= 2
-        ) or (
-            age >= _CODEX_ROLLOVER_MAX_HOLD_SECONDS
-            and observations >= 5
-            and clean_streak >= 3
-        )
-        if confirmed:
+        if observations >= 2:
             candidates.pop(window_name, None)
             continue
 
         candidate["nextPollUtc"] = (now + dt.timedelta(seconds=_CODEX_ROLLOVER_POLL_SECONDS)).isoformat()
-        candidate["maxHoldUtc"] = (first_seen + dt.timedelta(seconds=_CODEX_ROLLOVER_MAX_HOLD_SECONDS)).isoformat()
         candidates[window_name] = candidate
         guarded[window_name] = reset
 

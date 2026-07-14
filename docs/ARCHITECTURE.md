@@ -24,9 +24,11 @@ Start-AI-Account-Hub.bat (Windows source bootstrap)
 ```
 
 `main.py` installs the top-level exception logger. `app.py` owns Qt application
-creation and platform application identity. `MainWindow` owns the visible
-window, Statistics and Accounts screens, timers, tray controller, and
-orderly shutdown.
+creation, platform application identity, and a launcher-root-scoped local
+single-instance channel. A later launch asks the existing Hub to restore its
+window and exits, leaving one timer and one writer for the profile store.
+`MainWindow` owns the visible window, Statistics and Accounts screens, timers,
+tray controller, and orderly shutdown.
 
 ## Package layout
 
@@ -131,7 +133,10 @@ change functions that close over `hub_core` globals.
 - **Codex**: an isolated `CODEX_HOME` is passed to `codex app-server`. The Node
   helper warms the selected account and reconciles several rate-limit reads,
   because a newly started app-server can briefly expose a default empty window.
-  Python also rejects impossible rollovers before a previously advertised reset.
+  When an exhausted window first appears reset, the Hub preserves the previous
+  card and shows Verifying. It polls that account again after one minute and
+  accepts the second successful Codex report exactly as returned. This targeted
+  verification continues even when general Auto Refresh is disabled.
 - **Claude Code**: each profile has an isolated config directory. Claude Desktop
   capture/switch logic is separate because CLI and Desktop authentication are
   independent provider sessions. Local usage keeps one maximum non-zero usage

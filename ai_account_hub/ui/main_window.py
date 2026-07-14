@@ -821,7 +821,9 @@ class MainWindow(QWidget):
         self.accounts.tick()
         if self._tray_controller is not None:
             self._tray_controller.tick()
-        rollover_started = self.accounts.refresh_due_rollovers() if self._auto_on else False
+        # A rollover verification is already in progress and must finish even
+        # when general Auto Refresh is disabled.
+        rollover_started = self.accounts.refresh_due_rollovers()
         if self._auto_on and dt.datetime.now() >= self._next_auto_refresh:
             self._next_auto_refresh = dt.datetime.now() + dt.timedelta(minutes=self._auto_minutes)
             if not rollover_started:
