@@ -86,7 +86,12 @@ def local_datetime_label(raw: object) -> str:
     parsed = parse_iso_datetime(raw)
     if parsed is None:
         return "-"
-    local = parsed.astimezone()
+    try:
+        local = parsed.astimezone()
+    except (OSError, OverflowError, ValueError):
+        # Chromium cookie databases can retain sentinel or corrupt expiry
+        # values outside the range supported by the Windows timezone APIs.
+        return "-"
     return local.strftime("%Y-%m-%d %H:%M")
 
 

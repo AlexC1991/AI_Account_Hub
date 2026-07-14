@@ -219,11 +219,23 @@ class HubEngine(_ClaudeDesktopMixin):
                 "desktopOnly": True,
                 "error": "" if ready else profile["lastLimitsError"],
             }
-        desktop = L.claude_desktop_login_status()
         cli_status = self._run_claude_auth_status(profile)
         auth_info = L.parse_claude_auth_status_text(cli_status)
         usage_probe = self._run_claude_usage_probe(profile)
         usage_parsed = usage_probe.get("parsed") if usage_probe.get("ok") and isinstance(usage_probe.get("parsed"), dict) else {}
+        desktop = {
+            "ready": False,
+            "summary": "Claude Desktop status is unavailable.",
+            "sessionExpires": "",
+        }
+        try:
+            desktop.update(L.claude_desktop_login_status())
+        except Exception as error:
+            # Claude Desktop is an optional companion for Claude Code profiles.
+            # Its local state can be absent, locked, or mid-update while the CLI
+            # remains fully authenticated and capable of reporting usage.
+            _logger.warning("Claude Desktop status probe failed; continuing with Claude Code", exc_info=True)
+            desktop["summary"] = f"Claude Desktop status unavailable: {error}"
         previous_summary = profile.get("usageSummary") if isinstance(profile.get("usageSummary"), dict) else {}
         daily_buckets = L.build_claude_usage_buckets(L.claude_profile_home(profile) / "projects")
         profile["lastLimitsRefreshUtc"] = L.iso_utc_now()
@@ -282,10 +294,10 @@ class HubEngine(_ClaudeDesktopMixin):
             "last7dMessages": recent_messages,
         }
         profile["lastUsageError"] = str(usage_probe.get("error") or "")
-        if desktop.get("ready") or bool(auth_info.get("loggedIn")):
+        if bool(auth_info.get("loggedIn")):
             profile["lastLimitsError"] = ""
             return {"ok": True, "provider": "claude"}
-        profile["lastLimitsError"] = str(desktop.get("summary") or "Claude Desktop login not detected.")
+        profile["lastLimitsError"] = "Claude Code CLI is not logged in."
         return {"ok": False, "provider": "claude", "error": profile["lastLimitsError"]}
 
     def _refresh_cursor(self, profile: dict) -> dict:

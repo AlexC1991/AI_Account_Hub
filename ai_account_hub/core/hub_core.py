@@ -753,7 +753,6 @@ def effective_state(profile: dict) -> str:
         summary = profile.get("usageSummary") if isinstance(profile.get("usageSummary"), dict) else {}
         auth_status = summary.get("claudeAuthStatus") if isinstance(summary.get("claudeAuthStatus"), dict) else {}
         cli_ready = bool(auth_status.get("loggedIn"))
-        desktop_ready = bool(summary.get("desktopReady")) or bool(cached_claude_desktop_login_status().get("ready"))
         desktop_only_error = (
             "claude desktop login not detected" in last_error.lower()
             or "claude desktop is not installed" in last_error.lower()
@@ -768,7 +767,10 @@ def effective_state(profile: dict) -> str:
             return "not_ready"
         if is_limit_exhausted(profile.get("weeklyLimitUsedPercent")):
             return "not_ready"
-        return "ready" if cli_ready or desktop_ready else "login"
+        # A Claude Code profile is usable through its own CLI login. Desktop
+        # login state is separate and must not gate cards or background usage
+        # polling when the optional Desktop application is closed.
+        return "ready" if cli_ready else "login"
     if provider in {"cursor", "antigravity"}:
         if "login not detected" in last_error.lower():
             return "login"
